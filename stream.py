@@ -22,13 +22,13 @@ except Exception:
     st.warning("Logo not found. Please update the LOGO_PATH variable.")
 
 st.markdown("""
-# Your Lab Name  
+# Medical Artificial Intelligence Lab  
 ### MRIQC Web App for Scientific MRI Data Quality Assessment
 
-This tool converts DICOM MRI data into BIDS format and runs MRIQC on an AWS server to generate quality reports.  
+This tool converts DICOM MRI data into BIDS format and runs MRI Quality Control to generate quality reports.  
 It includes:
 - DICOM → BIDS conversion,
-- Sending the BIDS dataset to an AWS FastAPI server,
+- Sending the BIDS dataset to a server,
 - Running MRIQC with real-time log streaming,
 - And downloading the final results.
 """, unsafe_allow_html=True)
@@ -266,7 +266,7 @@ def main():
     selected_modalities = st.multiselect(
         "Select MRIQC modalities:",
         ["T1w", "T2w", "bold"],
-        default=["T1w", "T2w", "bold"]
+        default=["T1w"]
     )
     modalities_str = " ".join(selected_modalities)
 
