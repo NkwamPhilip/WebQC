@@ -9,31 +9,35 @@ import os
 import json
 import datetime
 
-# Set page to wide layout, custom title, etc.
+# ------------------------------
+# Streamlit Page Configuration & Branding
+# ------------------------------
 st.set_page_config(page_title="MRIQC App", layout="wide")
 
-# Optional: local or online logo
-# If you have a local file named 'lab_logo.png', place it in the same folder as this script
-# or use a URL like "https://example.com/my_lab_logo.png"
-LOGO_PATH = "MLAB.png"  # or a direct URL
+# Display a lab logo and app description.
+LOGO_PATH = "lab_logo.png"  # Replace with your local file or URL for your lab's logo
 try:
-    st.image(LOGO_PATH, width=180)
-except:
-    pass  # If no local file found, silently ignore or handle an error
+    st.image(LOGO_PATH, width=200)
+except Exception:
+    st.warning("Logo not found. Please update the LOGO_PATH variable.")
 
 st.markdown("""
-# Medical Artificial Intelligence Lab>
+# Your Lab Name  
+### MRIQC Web App for Scientific MRI Data Quality Assessment
 
-**MRIQC Web App** for converting DICOM to BIDS and running MRI Quality Control with real-time logs.
-
-### Scientific Use
-This tool streamlines the pipeline for:
-1. Converting DICOM MRI data (T1, T2, BOLD, etc.) to BIDS format.
-2. Running MRIQC to assess quality of the MRI scans.
-3. Viewing logs in real-time and downloading the results.
-
-> **Note**: This front-end is deployed as a Streamlit app, while the heavy-lifting (MRIQC) runs on an AWS instance behind the scenes.
+This tool converts DICOM MRI data into BIDS format and runs MRIQC on an AWS server to generate quality reports.  
+It includes:
+- DICOM → BIDS conversion,
+- Sending the BIDS dataset to an AWS FastAPI server,
+- Running MRIQC with real-time log streaming,
+- And downloading the final results.
 """, unsafe_allow_html=True)
+
+# ------------------------------
+# Default AWS Server Settings (Hidden)
+# ------------------------------
+DEFAULT_API_URL = "http://51.21.190.32:8000"
+DEFAULT_WS_URL = "ws://51.21.190.32:8000/ws/mriqc"
 
 # ------------------------------
 # Helper Functions
@@ -197,6 +201,10 @@ def zip_directory(folder_path: Path, zip_file_path: Path):
     shutil.make_archive(str(zip_file_path.with_suffix("")),
                         "zip", root_dir=folder_path)
 
+# ------------------------------
+# Real-Time WebSocket Log Viewer
+# ------------------------------
+
 
 def websocket_log_viewer(ws_url: str):
     html_code = f"""
@@ -242,16 +250,19 @@ def websocket_log_viewer(ws_url: str):
     """
     st.components.v1.html(html_code, height=700)
 
+# ------------------------------
+# Main Streamlit App
+# ------------------------------
+
 
 def main():
-    # Default addresses for AWS
-    DEFAULT_API_URL = "http://51.21.190.32:8000"
-    DEFAULT_WS_URL = "ws://51.21.190.32:8000/ws/mriqc"
+    st.title("DICOM → BIDS → MRIQC (AWS Hybrid with Real-Time Logs)")
 
+    # Input: Subject and Session
     subj_id = st.text_input("Subject ID (e.g. '01')", value="01")
     ses_id = st.text_input("Session ID (optional)", value="Baseline")
 
-    # Let user pick which MRIQC modalities to run
+    # Multi-select for modalities
     selected_modalities = st.multiselect(
         "Select MRIQC modalities:",
         ["T1w", "T2w", "bold"],
@@ -259,21 +270,14 @@ def main():
     )
     modalities_str = " ".join(selected_modalities)
 
-    st.write(
-        "**No user config needed.")
-    # We'll simply hide the text inputs for IP/WebSocket
-    # The code below is commented out because we won't show them:
-    # aws_api_url = st.text_input("AWS MRIQC Server URL", DEFAULT_API_URL)
-    # ws_url = st.text_input("AWS MRIQC WebSocket URL", DEFAULT_WS_URL)
-
-    # Instead, just set them:
-    aws_api_url = DEFAULT_API_URL
-    ws_url = DEFAULT_WS_URL
+    # Set AWS endpoints (hidden from the user)
+    aws_api_url = "http://51.21.190.32:8000"
+    ws_url = "ws://51.21.190.32:8000/ws/mriqc"
 
     dicom_zip = st.file_uploader("Upload DICOM ZIP", type=["zip"])
 
     if dicom_zip:
-        # Phase 1: DICOM to BIDS
+        # Phase 1: DICOM to BIDS Conversion
         if st.button("Run DICOM → BIDS Conversion"):
             with st.spinner("Converting DICOM to BIDS..."):
                 job_id = str(uuid.uuid4())[:8]
@@ -313,7 +317,7 @@ def main():
 
                 st.session_state.temp_dir = str(temp_dir)
 
-        # Phase 2: Send BIDS to AWS for MRIQC
+        # Phase 2: Send BIDS to AWS for MRIQC Processing
         if st.button("Send BIDS to AWS for MRIQC"):
             if "temp_dir" not in st.session_state:
                 st.error("No BIDS dataset found. Please run the conversion first.")
@@ -322,13 +326,11 @@ def main():
                 temp_dir = Path(st.session_state.temp_dir)
 
             bids_zip_path = temp_dir / "bids_dataset.zip"
-
             files = {
                 "bids_zip": ("bids_dataset.zip", open(bids_zip_path, "rb"), "application/zip")
             }
             data = {
                 "participant_label": subj_id,
-                # pass user-chosen modalities
                 "modalities": modalities_str
             }
             api_endpoint = f"{aws_api_url}/run-mriqc"
@@ -340,10 +342,16 @@ def main():
                 st.error(f"MRIQC failed: {response.text}")
                 return
 
+            # Save MRIQC results ZIP file
             result_zip = temp_dir / "mriqc_results.zip"
             with open(result_zip, "wb") as f:
                 f.write(response.content)
             st.success("MRIQC results received from AWS server!")
+
+            # Offer a download button for MRIQC results ZIP
+            with open(result_zip, "rb") as f:
+                st.download_button("Download MRIQC Results", data=f,
+                                   file_name="mriqc_results.zip", mime="application/zip")
 
             result_dir = temp_dir / "mriqc_results"
             result_dir.mkdir(exist_ok=True)
@@ -368,15 +376,15 @@ def main():
                     st.write(f"Report found: {report}")
                     with open(report, "r") as rf:
                         html_data = rf.read()
-                    # Make the visuals wider
                     st.components.v1.html(
                         html_data, height=1000, scrolling=True)
 
             st.success("MRIQC processing complete!")
 
-        # Phase 3: Real-Time Log Viewer
+        # Phase 3: Real-Time Log Viewer via WebSocket
         st.subheader("Real-Time MRIQC Log Viewer")
-        st.write("Connecting to your AWS WebSocket server (hidden defaults)...")
+        st.write(
+            "Connecting to your AWS WebSocket server (using default endpoints)...")
         websocket_log_viewer(ws_url)
 
 
