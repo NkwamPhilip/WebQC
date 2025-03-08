@@ -15,7 +15,7 @@ st.set_page_config(page_title="MRIQC App", layout="wide")
 # Optional: local or online logo
 # If you have a local file named 'lab_logo.png', place it in the same folder as this script
 # or use a URL like "https://example.com/my_lab_logo.png"
-LOGO_PATH = "/Users/mac/Downloads/MLAB.png"  # or a direct URL
+LOGO_PATH = "MLAB.png"  # or a direct URL
 try:
     st.image(LOGO_PATH, width=180)
 except:
