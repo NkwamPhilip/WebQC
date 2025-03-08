@@ -15,7 +15,7 @@ import datetime
 st.set_page_config(page_title="MRIQC App", layout="wide")
 
 # Display a lab logo and app description.
-LOGO_PATH = "lab_logo.png"  # Replace with your local file or URL for your lab's logo
+LOGO_PATH = "MLAB.png"  # Replace with your local file or URL for your lab's logo
 try:
     st.image(LOGO_PATH, width=200)
 except Exception:
