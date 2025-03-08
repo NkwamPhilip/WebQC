@@ -256,7 +256,7 @@ def websocket_log_viewer(ws_url: str):
 
 
 def main():
-    st.title("DICOM → BIDS → MRIQC (AWS Hybrid with Real-Time Logs)")
+    st.title("DICOM → BIDS → MRI Quality Control")
 
     # Input: Subject and Session
     subj_id = st.text_input("Subject ID (e.g. '01')", value="01")
@@ -318,7 +318,7 @@ def main():
                 st.session_state.temp_dir = str(temp_dir)
 
         # Phase 2: Send BIDS to AWS for MRIQC Processing
-        if st.button("Send BIDS to AWS for MRIQC"):
+        if st.button("Send BIDS for MRIQC"):
             if "temp_dir" not in st.session_state:
                 st.error("No BIDS dataset found. Please run the conversion first.")
                 return
