@@ -346,7 +346,7 @@ def main():
             result_zip = temp_dir / "mriqc_results.zip"
             with open(result_zip, "wb") as f:
                 f.write(response.content)
-            st.success("MRIQC results received from AWS server!")
+            st.success("MRIQC results received from server!")
 
             # Offer a download button for MRIQC results ZIP
             with open(result_zip, "rb") as f:
@@ -380,12 +380,6 @@ def main():
                         html_data, height=1000, scrolling=True)
 
             st.success("MRIQC processing complete!")
-
-        # Phase 3: Real-Time Log Viewer via WebSocket
-        st.subheader("Real-Time MRIQC Log Viewer")
-        st.write(
-            "Connecting to your AWS WebSocket server (using default endpoints)...")
-        websocket_log_viewer(ws_url)
 
 
 if __name__ == "__main__":
