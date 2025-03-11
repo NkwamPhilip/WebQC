@@ -14,10 +14,8 @@ import datetime
 # ------------------------------
 st.set_page_config(page_title="MRIQC App", layout="wide")
 
-
-st.markdown("""
-# Medical Artificial Intelligence Lab  
-### MRIQC Web App for Scientific MRI Data Quality Assessment
+st.markdown(""" 
+# MRIQC Web App for Scientific MRI Data Quality Assessment
 
 This tool converts DICOM MRI data into BIDS format and runs MRI Quality Control to generate quality reports.  
 It includes:
@@ -27,86 +25,12 @@ It includes:
 - And downloading the final results.
 """, unsafe_allow_html=True)
 
-with st.expander("🧠 MRIQC Image Quality Metrics (IQMs) – Full Descriptions"):
-    st.markdown("""
-## 🧠 Anatomical (T1w / T2w) IQMs
-
-**1. CNR – Contrast-to-Noise Ratio**  
-Measures how well different tissues (like gray matter and white matter) are distinguished.  
-🟢 Higher CNR = better tissue contrast.
-
-**2. SNR – Signal-to-Noise Ratio**  
-Assesses the strength of the signal relative to background noise.  
-🟢 Higher SNR = cleaner images.
-
-**3. EFC – Entropy Focus Criterion**  
-Quantifies image sharpness using Shannon entropy.  
-🔴 Higher EFC = more ghosting or blurring (i.e., less sharp).
-
-**4. FBER – Foreground-Background Energy Ratio**  
-Compares energy inside the brain mask vs outside.  
-🟢 Higher FBER = better tissue delineation.
-
-**5. FWHM – Full Width at Half Maximum**  
-Estimates smoothness in spatial resolution.  
-🟡 Lower FWHM = sharper images, but depends on scanner/protocol.
-
-**6. INU – Intensity Non-Uniformity**  
-Evaluates bias fields caused by scanner imperfections.  
-🔴 Higher INU = more uneven signal across image.
-
-**7. QI1 – Quality Index 1**  
-Measures artifacts in areas outside the brain.  
-🔴 Higher QI1 = more artifacts (e.g., motion, ghosting).
-
-**8. QI2 – Quality Index 2**  
-Detects structured noise using chi-squared goodness-of-fit.  
-🔴 Higher QI2 = likely issues with signal consistency.
-
-**9. WM2MAX – White Matter to Max Intensity Ratio**  
-Checks if white matter intensity is in a normal range.  
-🟡 Very high or low values may indicate poor normalization or acquisition problems.
-
----
-
-## 🧠 Functional (BOLD / fMRI) IQMs
-
-**1. FD – Framewise Displacement**  
-Quantifies subject head movement across volumes.  
-🔴 Higher FD = more motion artifacts.  
-🟢 Mean FD < 0.2mm is often acceptable.
-
-**2. DVARS – D Temporal Variance of Signal**  
-Measures signal change between consecutive volumes.  
-🔴 Spikes in DVARS = potential motion or noise events.
-
-**3. tSNR – Temporal Signal-to-Noise Ratio**  
-SNR over time (mean / std of time series per voxel).  
-🟢 Higher tSNR = more reliable signal over time.
-
-**4. GCOR – Global Correlation**  
-Detects global signal fluctuations across the brain.  
-🔴 High GCOR may indicate widespread noise.
-
-**5. AOR – AFNI Outlier Ratio**  
-Counts the number of voxels flagged as statistical outliers.  
-🔴 High AOR = poor scan quality or motion-related issues.
-
-**6. GSR – Global Signal Regression Impact**  
-Assesses how removing global signal changes BOLD contrast.  
-🟡 Large differences might affect downstream results.
-
----
-
-🔎 **For deeper technical explanations and formulas, see the [MRIQC Documentation](https://mriqc.readthedocs.io/en/stable/iqms/iqms.html).**
-""")
-
 
 # ------------------------------
 # Default AWS Server Settings (Hidden)
 # ------------------------------
-DEFAULT_API_URL = "http://51.21.190.32:8000"
-DEFAULT_WS_URL = "ws://51.21.190.32:8000/ws/mriqc"
+aws_api_url = "http://51.21.190.32:8000"
+ws_url = "ws://51.21.190.32:8000/ws/mriqc"
 
 # ------------------------------
 # Helper Functions
@@ -325,13 +249,11 @@ def websocket_log_viewer(ws_url: str):
 
 
 def main():
-    st.title("DICOM → BIDS → MRI Quality Control")
+    st.title("DICOM → BIDS → MRIQC (AWS Hybrid with Real-Time Logs)")
 
-    # Input: Subject and Session
     subj_id = st.text_input("Subject ID (e.g. '01')", value="01")
     ses_id = st.text_input("Session ID (optional)", value="Baseline")
 
-    # Multi-select for modalities
     selected_modalities = st.multiselect(
         "Select MRIQC modalities:",
         ["T1w", "T2w", "bold"],
@@ -339,7 +261,6 @@ def main():
     )
     modalities_str = " ".join(selected_modalities)
 
-    # Set AWS endpoints (hidden from the user)
     aws_api_url = "http://51.21.190.32:8000"
     ws_url = "ws://51.21.190.32:8000/ws/mriqc"
 
@@ -387,7 +308,7 @@ def main():
                 st.session_state.temp_dir = str(temp_dir)
 
         # Phase 2: Send BIDS to AWS for MRIQC Processing
-        if st.button("Send BIDS for MRIQC"):
+        if st.button("Send BIDS to AWS for MRIQC"):
             if "temp_dir" not in st.session_state:
                 st.error("No BIDS dataset found. Please run the conversion first.")
                 return
@@ -411,13 +332,12 @@ def main():
                 st.error(f"MRIQC failed: {response.text}")
                 return
 
-            # Save MRIQC results ZIP file
             result_zip = temp_dir / "mriqc_results.zip"
             with open(result_zip, "wb") as f:
                 f.write(response.content)
-            st.success("MRIQC results received from server!")
+            st.success("MRIQC results received from AWS server!")
 
-            # Offer a download button for MRIQC results ZIP
+            # Provide a download button for the MRIQC results ZIP file
             with open(result_zip, "rb") as f:
                 st.download_button("Download MRIQC Results", data=f,
                                    file_name="mriqc_results.zip", mime="application/zip")
@@ -450,16 +370,45 @@ def main():
 
             st.success("MRIQC processing complete!")
 
+        # Phase 3: Real-Time Log Viewer via WebSocket
+        st.subheader("Real-Time MRIQC Log Viewer")
+        st.write(
+            "Connecting to your AWS WebSocket server (using default endpoints)...")
+        websocket_log_viewer(ws_url)
 
-# Display a lab logo and app description.
-LOGO_PATH = "MLAB.png"  # Replace with your local file or URL for your lab's logo
-try:
-    st.image(LOGO_PATH, width=200)
-except Exception:
-    st.warning("Logo not found. Please update the LOGO_PATH variable.")
-
-st.markdown("""
-# Medical Artificial Intelligence Lab """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
+
+# ------------------------------
+# Footer: Lab Branding
+# ------------------------------
+st.markdown(
+    """
+    <style>
+    .footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background-color: #f9f9f9;
+        text-align: center;
+        padding: 10px;
+        color: #333;
+        font-size: 14px;
+        border-top: 1px solid #e0e0e0;
+    }
+    .footer img {
+        height: 24px;
+        vertical-align: middle;
+        margin-right: 8px;
+    }
+    </style>
+    <div class="footer">
+        <img src="MLAB.png" alt="Lab Logo">
+        © 2025 Medical Artificial Intelligence Lab – All Rights Reserved
+    </div>
+    """,
+    unsafe_allow_html=True
+)
