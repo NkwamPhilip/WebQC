@@ -369,10 +369,10 @@ def main():
             st.success("MRIQC processing complete!")
 
         # Phase 3: Real-Time Log Viewer via WebSocket
-        """st.subheader("Real-Time MRIQC Log Viewer")
-        st.write(
-            "Connecting to your  WebSocket server (using default endpoints)...")
-        websocket_log_viewer(ws_url)"""
+        # st.subheader("Real-Time MRIQC Log Viewer")
+        # st.write(
+            # "Connecting to your  WebSocket server (using default endpoints)...")
+        # Websocket_log_viewer(ws_url)"""
 
 
 if __name__ == "__main__":
