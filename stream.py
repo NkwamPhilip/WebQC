@@ -249,7 +249,7 @@ def websocket_log_viewer(ws_url: str):
 
 
 def main():
-    st.title("DICOM → BIDS → MRIQC (AWS Hybrid with Real-Time Logs)")
+    st.title("DICOM → BIDS → MRIQC")
 
     subj_id = st.text_input("Subject ID (e.g. '01')", value="01")
     ses_id = st.text_input("Session ID (optional)", value="Baseline")
@@ -308,7 +308,7 @@ def main():
                 st.session_state.temp_dir = str(temp_dir)
 
         # Phase 2: Send BIDS to AWS for MRIQC Processing
-        if st.button("Send BIDS to AWS for MRIQC"):
+        if st.button("Send BIDS for MRIQC"):
             if "temp_dir" not in st.session_state:
                 st.error("No BIDS dataset found. Please run the conversion first.")
                 return
@@ -335,7 +335,7 @@ def main():
             result_zip = temp_dir / "mriqc_results.zip"
             with open(result_zip, "wb") as f:
                 f.write(response.content)
-            st.success("MRIQC results received from AWS server!")
+            st.success("MRIQC results received from server!")
 
             # Provide a download button for the MRIQC results ZIP file
             with open(result_zip, "rb") as f:
@@ -373,7 +373,7 @@ def main():
         # Phase 3: Real-Time Log Viewer via WebSocket
         st.subheader("Real-Time MRIQC Log Viewer")
         st.write(
-            "Connecting to your AWS WebSocket server (using default endpoints)...")
+            "Connecting to your  WebSocket server (using default endpoints)...")
         websocket_log_viewer(ws_url)
 
 
