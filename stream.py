@@ -308,7 +308,7 @@ def main():
                 st.session_state.temp_dir = str(temp_dir)
 
         # Phase 2: Send BIDS to AWS for MRIQC Processing
-        if st.button("Send BIDS for MRIQC"):
+        if st.button("Send BIDS to Web for MRIQC"):
             if "temp_dir" not in st.session_state:
                 st.error("No BIDS dataset found. Please run the conversion first.")
                 return
@@ -325,7 +325,7 @@ def main():
             }
             api_endpoint = f"{aws_api_url}/run-mriqc"
             st.write(
-                f"Sending BIDS + modalities={modalities_str} to {api_endpoint} ...")
+                f"Sending BIDS + modalities={modalities_str} to web ...")
 
             response = requests.post(api_endpoint, files=files, data=data)
             if response.status_code != 200:
