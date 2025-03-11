@@ -89,7 +89,7 @@ def run_dcm2bids(dicom_dir: Path, bids_out: Path, subj_id: str, ses_id: str, con
         st.error(f"dcm2bids error:\n{result.stderr}")
     else:
         st.success("dcm2bids completed successfully.")
-        st.text(result.stdout)
+        # st.text(result.stdout)
 
 
 def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
@@ -346,7 +346,6 @@ def main():
             result_dir.mkdir(exist_ok=True)
             with zipfile.ZipFile(result_zip, 'r') as zf:
                 zf.extractall(result_dir)
-            st.info(f"Results unzipped in {result_dir}")
 
             log_files = list(result_dir.rglob("mriqc_log.txt"))
             if log_files:
@@ -362,7 +361,6 @@ def main():
                 st.warning("No HTML reports found in MRIQC results.")
             else:
                 for report in html_reports:
-                    st.write(f"Report found: {report}")
                     with open(report, "r") as rf:
                         html_data = rf.read()
                     st.components.v1.html(
@@ -371,10 +369,10 @@ def main():
             st.success("MRIQC processing complete!")
 
         # Phase 3: Real-Time Log Viewer via WebSocket
-        st.subheader("Real-Time MRIQC Log Viewer")
+        """st.subheader("Real-Time MRIQC Log Viewer")
         st.write(
             "Connecting to your  WebSocket server (using default endpoints)...")
-        websocket_log_viewer(ws_url)
+        websocket_log_viewer(ws_url)"""
 
 
 if __name__ == "__main__":
