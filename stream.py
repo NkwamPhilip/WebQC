@@ -382,15 +382,15 @@ if __name__ == "__main__":
 # Footer: Lab Branding (Custom)
 # ------------------------------
 
-st.markdown(
-    """
-    <div style="text-align: center; margin-top: 50px;">
-        <img src="https://github.com/NkwamPhilip/MLAB/blob/2545d5774dc9b376b6b0180f25388bace232497c/MLAB.png" alt="Lab Logo" style="height: 50px;">
-        <h3>Medical Artificial Intelligence Lab</h3>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+#st.markdown(
+#    """
+#    <div style="text-align: center; margin-top: 50px;">
+#        <img src="https://github.com/NkwamPhilip/MLAB/blob/2545d5774dc9b376b6b0180f25388bace232497c/MLAB.png" alt="Lab Logo" style="height: 50px;">
+ #       <h3>Medical Artificial Intelligence Lab</h3>
+ #   </div>
+ #   """,
+ #   unsafe_allow_html=True
+#)
 
 
 st.markdown(
