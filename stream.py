@@ -381,38 +381,35 @@ if __name__ == "__main__":
     main()
 
 # ------------------------------
-# Footer: Lab Branding
-# ------------------------------
-# ------------------------------
-# Footer: Lab Branding (Fixed)
+# Footer: Lab Branding (Custom)
 # ------------------------------
 st.markdown(
     """
     <style>
-    /* Hide the default footer */
-    footer {visibility: hidden;}
-    /* Create a new custom footer */
+    /* Hide Streamlit's default footer */
+    footer { visibility: hidden; }
+    /* Custom footer styling */
     .custom-footer {
         position: fixed;
         left: 0;
         bottom: 0;
         width: 100%;
         background-color: #f9f9f9;
-        color: #333;
         text-align: center;
         padding: 10px 0;
         border-top: 1px solid #e0e0e0;
         font-size: 14px;
+        color: #333;
     }
     .custom-footer img {
-        height: 24px;
+        height: 40px;
         vertical-align: middle;
-        margin-right: 8px;
+        margin-right: 10px;
     }
     </style>
     <div class="custom-footer">
         <img src="MLAB.png" alt="Lab Logo">
-        © 2025 Medical Artificial Intelligence Lab – All Rights Reserved
+        <strong>Medical Artificial Intelligence Lab</strong> – © 2025 All Rights Reserved
     </div>
     """,
     unsafe_allow_html=True
