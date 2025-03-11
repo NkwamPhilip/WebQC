@@ -14,12 +14,6 @@ import datetime
 # ------------------------------
 st.set_page_config(page_title="MRIQC App", layout="wide")
 
-# Display a lab logo and app description.
-LOGO_PATH = "MLAB.png"  # Replace with your local file or URL for your lab's logo
-try:
-    st.image(LOGO_PATH, width=200)
-except Exception:
-    st.warning("Logo not found. Please update the LOGO_PATH variable.")
 
 st.markdown("""
 # Medical Artificial Intelligence Lab  
@@ -32,6 +26,81 @@ It includes:
 - Running MRIQC with real-time log streaming,
 - And downloading the final results.
 """, unsafe_allow_html=True)
+
+with st.expander("🧠 MRIQC Image Quality Metrics (IQMs) – Full Descriptions"):
+    st.markdown("""
+## 🧠 Anatomical (T1w / T2w) IQMs
+
+**1. CNR – Contrast-to-Noise Ratio**  
+Measures how well different tissues (like gray matter and white matter) are distinguished.  
+🟢 Higher CNR = better tissue contrast.
+
+**2. SNR – Signal-to-Noise Ratio**  
+Assesses the strength of the signal relative to background noise.  
+🟢 Higher SNR = cleaner images.
+
+**3. EFC – Entropy Focus Criterion**  
+Quantifies image sharpness using Shannon entropy.  
+🔴 Higher EFC = more ghosting or blurring (i.e., less sharp).
+
+**4. FBER – Foreground-Background Energy Ratio**  
+Compares energy inside the brain mask vs outside.  
+🟢 Higher FBER = better tissue delineation.
+
+**5. FWHM – Full Width at Half Maximum**  
+Estimates smoothness in spatial resolution.  
+🟡 Lower FWHM = sharper images, but depends on scanner/protocol.
+
+**6. INU – Intensity Non-Uniformity**  
+Evaluates bias fields caused by scanner imperfections.  
+🔴 Higher INU = more uneven signal across image.
+
+**7. QI1 – Quality Index 1**  
+Measures artifacts in areas outside the brain.  
+🔴 Higher QI1 = more artifacts (e.g., motion, ghosting).
+
+**8. QI2 – Quality Index 2**  
+Detects structured noise using chi-squared goodness-of-fit.  
+🔴 Higher QI2 = likely issues with signal consistency.
+
+**9. WM2MAX – White Matter to Max Intensity Ratio**  
+Checks if white matter intensity is in a normal range.  
+🟡 Very high or low values may indicate poor normalization or acquisition problems.
+
+---
+
+## 🧠 Functional (BOLD / fMRI) IQMs
+
+**1. FD – Framewise Displacement**  
+Quantifies subject head movement across volumes.  
+🔴 Higher FD = more motion artifacts.  
+🟢 Mean FD < 0.2mm is often acceptable.
+
+**2. DVARS – D Temporal Variance of Signal**  
+Measures signal change between consecutive volumes.  
+🔴 Spikes in DVARS = potential motion or noise events.
+
+**3. tSNR – Temporal Signal-to-Noise Ratio**  
+SNR over time (mean / std of time series per voxel).  
+🟢 Higher tSNR = more reliable signal over time.
+
+**4. GCOR – Global Correlation**  
+Detects global signal fluctuations across the brain.  
+🔴 High GCOR may indicate widespread noise.
+
+**5. AOR – AFNI Outlier Ratio**  
+Counts the number of voxels flagged as statistical outliers.  
+🔴 High AOR = poor scan quality or motion-related issues.
+
+**6. GSR – Global Signal Regression Impact**  
+Assesses how removing global signal changes BOLD contrast.  
+🟡 Large differences might affect downstream results.
+
+---
+
+🔎 **For deeper technical explanations and formulas, see the [MRIQC Documentation](https://mriqc.readthedocs.io/en/stable/iqms/iqms.html).**
+""")
+
 
 # ------------------------------
 # Default AWS Server Settings (Hidden)
@@ -381,6 +450,16 @@ def main():
 
             st.success("MRIQC processing complete!")
 
+
+# Display a lab logo and app description.
+LOGO_PATH = "MLAB.png"  # Replace with your local file or URL for your lab's logo
+try:
+    st.image(LOGO_PATH, width=200)
+except Exception:
+    st.warning("Logo not found. Please update the LOGO_PATH variable.")
+
+st.markdown("""
+# Medical Artificial Intelligence Lab """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
