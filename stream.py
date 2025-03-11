@@ -383,12 +383,19 @@ if __name__ == "__main__":
 # ------------------------------
 # Footer: Lab Branding (Custom)
 # ------------------------------
+
+# Place your lab logo in the same directory or use an external URL.
+LOGO_PATH = "MLAB.png"
+try:
+    st.image(LOGO_PATH, width=200)
+except Exception:
+    st.warning("Logo not found. Please update the LOGO_PATH variable.")
+
 st.markdown(
     """
     <div style="text-align: center; margin-top: 50px;">
         <img src="MLAB.png" alt="Lab Logo" style="height: 50px;">
-        <h3>Medical Artificial Intelligence Lab</h3>
-    </div>
+        <>Medical Artificial Intelligence Lab
     """,
     unsafe_allow_html=True
 )
