@@ -383,30 +383,35 @@ if __name__ == "__main__":
 # ------------------------------
 # Footer: Lab Branding
 # ------------------------------
+# ------------------------------
+# Footer: Lab Branding (Fixed)
+# ------------------------------
 st.markdown(
     """
     <style>
-    .footer {
+    /* Hide the default footer */
+    footer {visibility: hidden;}
+    /* Create a new custom footer */
+    .custom-footer {
         position: fixed;
-        bottom: 0;
         left: 0;
-        right: 0;
-        height: 60px;
+        bottom: 0;
+        width: 100%;
         background-color: #f9f9f9;
-        text-align: center;
-        padding: 10px;
         color: #333;
-        font-size: 14px;
+        text-align: center;
+        padding: 10px 0;
         border-top: 1px solid #e0e0e0;
+        font-size: 14px;
     }
-    .footer img {
+    .custom-footer img {
         height: 24px;
         vertical-align: middle;
         margin-right: 8px;
     }
     </style>
-    <div class="footer">
-        <img src="./MLAB.png" alt="Lab Logo">
+    <div class="custom-footer">
+        <img src="MLAB.png" alt="Lab Logo">
         © 2025 Medical Artificial Intelligence Lab – All Rights Reserved
     </div>
     """,
