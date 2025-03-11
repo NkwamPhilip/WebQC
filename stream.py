@@ -387,18 +387,29 @@ if __name__ == "__main__":
 # Place your lab logo in the same directory or use an external URL.
 LOGO_PATH = "MLAB.png"
 try:
-    st.image(LOGO_PATH, width=200)
+    # Center the image using a markdown container
+    st.markdown(
+        """
+        <div style="text-align: center;">
+            <img src="MLAB.png" alt="Lab Logo" width="200">
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 except Exception:
     st.warning("Logo not found. Please update the LOGO_PATH variable.")
 
+# Center the lab name below the logo
 st.markdown(
     """
-    <div style="text-align: center; margin-top: 50px;">
-        <img src="MLAB.png" alt="Lab Logo" style="height: 50px;">
-        <>Medical Artificial Intelligence Lab
+    <div style="text-align: center; margin-top: 20px;">
+        <h3>Medical Artificial Intelligence Lab</h3>
+    </div>
     """,
     unsafe_allow_html=True
 )
+
+
 st.markdown(
     """
     <style>
