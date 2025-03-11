@@ -406,7 +406,7 @@ st.markdown(
     }
     </style>
     <div class="footer">
-        <img src="MLAB.png" alt="Lab Logo">
+        <img src="./MLAB.png" alt="Lab Logo">
         © 2025 Medical Artificial Intelligence Lab – All Rights Reserved
     </div>
     """,
