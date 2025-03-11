@@ -385,6 +385,15 @@ if __name__ == "__main__":
 # ------------------------------
 st.markdown(
     """
+    <div style="text-align: center; margin-top: 50px;">
+        <img src="MLAB.png" alt="Lab Logo" style="height: 50px;">
+        <h3>Medical Artificial Intelligence Lab</h3>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+st.markdown(
+    """
     <style>
     /* Hide Streamlit's default footer */
     footer { visibility: hidden; }
@@ -408,7 +417,6 @@ st.markdown(
     }
     </style>
     <div class="custom-footer">
-        <img src="MLAB.png" alt="Lab Logo">
         <strong>Medical Artificial Intelligence Lab</strong> – © 2025 All Rights Reserved
     </div>
     """,
