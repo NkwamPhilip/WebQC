@@ -19,20 +19,21 @@ st.markdown("""
 
 The WebQC App provides an intuitive web interface for running Quality Control on MRI datasets acquired in DICOM formats. The App offers users the ability to compute Image Quality Metrics (IQMs) for neuroimaging studies. 
 This web-based solution implements the original MRIQC standalone application in a user-friendly interface accessible from any device, without the need for software installation or access to resource-intensive computers. Thus, simplifying the quality control workflow. For a comprehensive understanding of the IQMs computed by MRIQC, as well as details on the original MRIQC implementation, refer to the official MRIQC documentation: https://mriqc.readthedocs.io.
-
             
+
 ## How to Use:
-1. The app enables users to upload T1w, T2w, or BOLD fMRI DICOM files as a folder or zipped format, convert them to the Standard Brain Imaging Data Structure (BIDS) format using dcm2bids [1] via dcm2niiX [2], and then process the IQMs using MRIQC [3]. The resulting reports can be downloaded for further analysis. To use, follow the following steps:
-2. Enter Subject ID (optional)
-3. Enter the Session ID (optional, e.g, baseline, follow up, etc)
-4. Select your preferred modality for analysis (T1w or T2w, or BOLD fMRI)
-5. Upload a zipped file/folder containing T1w, T2w, or BOLD fMRI DICOM images by dragging and dropping the zipped file or uploading using the browse file option
-6. Click DICOM → BIDS Conversion
-7. Once BIDS converted, you will see the notification: DICOM to BIDS conversion complete
-8. Click Send BIDS to Web for MRIQC or if you want the BIDS format, Click Download BIDS Dataset to your device. 
-9. Send the converted BIDS images to MRIQC by clicking Send BIDS to Web for MRIQC  for generating the IQMs
-10. Depending on your internet connection, this can take up to 5 minutes for a T1w anatomical image.
-11. When completed, you can view the report on the web App or download the report of the IQM by clicking the “Download MRIQC results” button including the csv export.
+The app enables users to upload T1w, T2w, or BOLD fMRI DICOM files as a folder or zipped format, convert them to the Standard Brain Imaging Data Structure (BIDS) format using dcm2bids [1] via dcm2niiX [2], and then process the IQMs using MRIQC [3]. The resulting reports can be downloaded for further analysis. To use, follow the following steps:
+            
+1. Enter Subject ID (optional)
+2. Enter the Session ID (optional, e.g, baseline, follow up, etc)
+3. Select your preferred modality for analysis (T1w or T2w, or BOLD fMRI)
+4. Upload a zipped file/folder containing T1w, T2w, or BOLD fMRI DICOM images by dragging and dropping the zipped file or uploading using the browse file option
+5. Click DICOM → BIDS Conversion
+6. Once BIDS converted, you will see the notification: DICOM to BIDS conversion complete
+7. Click Send BIDS to Web for MRIQC or if you want the BIDS format, Click Download BIDS Dataset to your device. 
+8. Send the converted BIDS images to MRIQC by clicking Send BIDS to Web for MRIQC  for generating the IQMs
+9. Depending on your internet connection, this can take up to 5 minutes for a T1w anatomical image.
+10. When completed, you can view the report on the web App or download the report of the IQM by clicking the “Download MRIQC results” button including the csv export.
            
             
 
