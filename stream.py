@@ -15,15 +15,67 @@ import datetime
 st.set_page_config(page_title="MRIQC App", layout="wide")
 
 st.markdown(""" 
-# MRIQC Web App for Scientific MRI Data Quality Assessment
+# MRIQC Web App for MRI Image Quality Assessment
 
-This tool converts DICOM MRI data into BIDS format and runs MRI Quality Control to generate quality reports.  
-It includes:
-- DICOM → BIDS conversion,
-- Sending the BIDS dataset to a server,
-- Running MRIQC with real-time log streaming,
-- And downloading the final results.
+The WebQC App provides an intuitive web interface for running Quality Control on MRI datasets acquired in DICOM formats. The App offers users the ability to compute Image Quality Metrics (IQMs) for neuroimaging studies. 
+This web-based solution implements the original MRIQC standalone application in a user-friendly interface accessible from any device, without the need for software installation or access to resource-intensive computers. Thus, simplifying the quality control workflow. For a comprehensive understanding of the IQMs computed by MRIQC, as well as details on the original MRIQC implementation, refer to the official MRIQC documentation: https://mriqc.readthedocs.io.
+
+            
+## How to Use:
+1. The app enables users to upload T1w, T2w, or BOLD fMRI DICOM files as a folder or zipped format, convert them to the Standard Brain Imaging Data Structure (BIDS) format using dcm2bids [1] via dcm2niiX [2], and then process the IQMs using MRIQC [3]. The resulting reports can be downloaded for further analysis. To use, follow the following steps:
+2. Enter Subject ID (optional)
+3. Enter the Session ID (optional, e.g, baseline, follow up, etc)
+4. Select your preferred modality for analysis (T1w or T2w, or BOLD fMRI)
+5. Upload a zipped file/folder containing T1w, T2w, or BOLD fMRI DICOM images by dragging and dropping the zipped file or uploading using the browse file option
+6. Click DICOM → BIDS Conversion
+7. Once BIDS converted, you will see the notification: DICOM to BIDS conversion complete
+8. Click Send BIDS to Web for MRIQC or if you want the BIDS format, Click Download BIDS Dataset to your device. 
+9. Send the converted BIDS images to MRIQC by clicking Send BIDS to Web for MRIQC  for generating the IQMs
+10. Depending on your internet connection, this can take up to 5 minutes for a T1w anatomical image.
+11. When completed, you can view the report on the web App or download the report of the IQM by clicking the “Download MRIQC results” button including the csv export.
+           
+            
+
+
+## References
+1. Boré, A., Guay, S., Bedetti, C., Meisler, S., & GuenTher, N. (2023). Dcm2Bids (Version 3.1.1) [Computer software]. https://doi.org/10.5281/zenodo.8436509
+2. Li X, Morgan PS, Ashburner J, Smith J, Rorden C. The first step for neuroimaging data analysis: DICOM to NIfTI conversion. J Neurosci Methods., 2016, 264:47-56.                                                                
+3. Esteban O, Birman D, Schaer M, Koyejo OO, Poldrack RA, Gorgolewski KJ (2017) MRIQC: Advancing the automatic prediction of image quality in MRI from unseen sites. PLoS ONE 12(9): e0184661. https://doi.org/10.1371/journal.pone.0184661
+
 """, unsafe_allow_html=True)
+
+
+# Display IQM tables in Markdown
+st.markdown("""
+### **Anatomical (T1w / T2w) IQMs**
+
+| Abbreviation | Name                                 | Description                                                                                                                                    |
+|--------------|--------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
+| **CNR**      | Contrast-to-Noise Ratio              | Measures how well different tissues (like gray matter and white matter) are distinguished. Higher CNR indicates better tissue contrast.        |
+| **SNR**      | Signal-to-Noise Ratio                | Assesses the strength of the signal relative to background noise. Higher SNR means clearer images.                                             |
+| **EFC**      | Entropy Focus Criterion              | Quantifies image sharpness using Shannon entropy. Higher EFC indicates more ghosting/blurring (i.e., less sharp).                              |
+| **FBER**     | Foreground-Background Energy Ratio   | Compares energy inside the brain mask vs outside. Higher FBER reflects better tissue delineation.                                              |
+| **FWHM**     | Full Width at Half Maximum           | Estimates the smoothness in spatial resolution. Lower FWHM typically implies sharper images (depends on scanner/protocol).                     |
+| **INU**      | Intensity Non-Uniformity             | Evaluates bias fields caused by scanner imperfections. Higher INU suggests more uneven signal across the image.                                |
+| **Art_QI1**  | Quality Index 1                      | Measures artifacts in areas outside the brain. Higher QI1 = more artifacts (e.g., motion, ghosting).                                           |
+| **Art_QI2**  | Quality Index 2                      | Detects structured noise using a chi-squared goodness-of-fit test. Higher QI2 indicates potential issues with signal consistency.              |
+| **WM2MAX**   | White Matter to Max Intensity Ratio  | Checks if white matter intensity is within a normal range. Very high or low values may indicate problems with normalization or acquisition.    |
+
+### **Functional (BOLD MRI) IQMs**
+
+| Abbreviation | Name                               | Description                                                                                                                    |
+|--------------|------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
+| **FD**       | Framewise Displacement             | Quantifies subject head movement across volumes. Higher FD = more motion artifacts. Mean FD < 0.2 mm is often acceptable.     |
+| **DVARS**    | D Temporal Variance of Signal      | Measures the change in signal between consecutive volumes. Spikes in DVARS can indicate motion or noise events.               |
+| **tSNR**     | Temporal Signal-to-Noise Ratio     | Assesses the SNR over time (mean / std of the time series per voxel). Higher tSNR = more reliable signal over time.           |
+| **GCOR**     | Global Correlation                 | Detects global signal fluctuations across the brain. Elevated GCOR may reflect widespread noise.                              |
+| **AOR**      | AFNI Outlier Ratio                 | Counts the number of voxels flagged as statistical outliers. High AOR suggests poor scan quality or significant motion issues. |
+| **GSR**      | Global Signal Regression Impact    | Assesses how removing global signal changes BOLD contrast. Large differences might affect downstream analysis.                |
+
+*For deeper technical explanations, see the [MRIQC Documentation](https://mriqc.readthedocs.io/en/latest/iqms/iqms.html).*
+""")
+
+# ... continue your Streamlit code (other steps, logic, etc.) ...
 
 
 # ------------------------------
@@ -55,7 +107,7 @@ def generate_dcm2bids_config(temp_dir: Path) -> Path:
             {
                 "dataType": "anat",
                 "modalityLabel": "FLAIR",
-                "criteria": {"SeriesDescription": "(?i).*flair.*"},
+                "criteria": {"SeriesDescription": "(?i).*flair.*|.*fluid.*"},
                 "sidecarChanges": {"ProtocolName": "FLAIR"}
             },
             {
@@ -118,6 +170,9 @@ def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
             modality_label = "anat"
             suffix = "T2w"
         elif "flair" in fname:
+            modality_label = "anat"
+            suffix = "FLAIR"
+        elif "fluid" in fname:
             modality_label = "anat"
             suffix = "FLAIR"
         elif "dwi" in fname or "dti" in fname:
@@ -382,7 +437,7 @@ if __name__ == "__main__":
 # Footer: Lab Branding (Custom)
 # ------------------------------
 
-#st.markdown(
+# st.markdown(
 #    """
 #    <div style="text-align: center; margin-top: 50px;">
 #        <img src="https://github.com/NkwamPhilip/MLAB/blob/2545d5774dc9b376b6b0180f25388bace232497c/MLAB.png" alt="Lab Logo" style="height: 50px;">
@@ -390,7 +445,7 @@ if __name__ == "__main__":
  #   </div>
  #   """,
  #   unsafe_allow_html=True
-#)
+# )
 
 
 st.markdown(
