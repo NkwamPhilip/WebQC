@@ -24,7 +24,7 @@ This web-based solution implements the original MRIQC standalone application in 
             )
 # Center an image below the header
 st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
-st.image("img.png", width=300)  # Adjust width as needed
+st.image("img.png", width=1000)  # Adjust width as needed
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown(
