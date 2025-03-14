@@ -1,3 +1,5 @@
+import pandas as pd
+from bs4 import BeautifulSoup
 import streamlit as st
 import zipfile
 import uuid
@@ -270,53 +272,25 @@ def zip_directory(folder_path: Path, zip_file_path: Path):
                         "zip", root_dir=folder_path)
 
 # ------------------------------
-# Real-Time WebSocket Log Viewer
+# Web Scraper
 # ------------------------------
 
 
-def websocket_log_viewer(ws_url: str):
-    html_code = f"""
-    <html>
-      <head>
-        <style>
-          body {{
-            font-family: Arial, sans-serif;
-          }}
-          #log {{
-            width: 100%;
-            height: 600px;
-            border: 1px solid #ccc;
-            overflow-y: scroll;
-            white-space: pre-wrap;
-            background-color: #f9f9f9;
-            padding: 10px;
-          }}
-        </style>
-      </head>
-      <body>
-        <h3>MRIQC Real-Time Log</h3>
-        <div id="log">Connecting to {ws_url}...</div>
-        <script>
-          var logDiv = document.getElementById("log");
-          var ws = new WebSocket("{ws_url}");
-          ws.onopen = function() {{
-              logDiv.innerHTML += "\\nWebSocket connection established.";
-          }};
-          ws.onmessage = function(event) {{
-              logDiv.innerHTML += "\\n" + event.data;
-              logDiv.scrollTop = logDiv.scrollHeight;
-          }};
-          ws.onclose = function() {{
-              logDiv.innerHTML += "\\nWebSocket connection closed.";
-          }};
-          ws.onerror = function(error) {{
-              logDiv.innerHTML += "\\nWebSocket error: " + error;
-          }};
-        </script>
-      </body>
-    </html>
-    """
-    st.components.v1.html(html_code, height=700)
+def extract_iqms_from_html(html_path):
+    with open(html_path, 'r', encoding='utf-8') as f:
+        soup = BeautifulSoup(f, 'html.parser')
+
+    iqms = {}
+    summary_card = soup.find("div", class_="card-body")
+    if summary_card:
+        for li in summary_card.find_all("li"):
+            text = li.get_text(strip=True)
+            if ':' in text:
+                key, value = text.split(":", 1)
+                iqms[key.strip()] = value.strip()
+    iqms['Report Filename'] = html_path.name
+    return iqms
+
 
 # ------------------------------
 # Main Streamlit App
@@ -399,8 +373,7 @@ def main():
                 "modalities": modalities_str
             }
             api_endpoint = f"{aws_api_url}/run-mriqc"
-            st.write(
-                f"Sending BIDS + modalities={modalities_str} to web ...")
+            st.write(f"Sending BIDS + modalities={modalities_str} to web ...")
 
             response = requests.post(api_endpoint, files=files, data=data)
             if response.status_code != 200:
@@ -412,16 +385,49 @@ def main():
                 f.write(response.content)
             st.success("MRIQC results received from server!")
 
-            # Provide a download button for the MRIQC results ZIP file
-            with open(result_zip, "rb") as f:
-                st.download_button("Download MRIQC Results", data=f,
-                                   file_name="mriqc_results.zip", mime="application/zip")
-
+            # Unzip MRIQC results
             result_dir = temp_dir / "mriqc_results"
             result_dir.mkdir(exist_ok=True)
             with zipfile.ZipFile(result_zip, 'r') as zf:
                 zf.extractall(result_dir)
 
+            # Extract IQMs automatically from HTML files
+            iqm_records = []
+            html_reports = list(result_dir.rglob("*.html"))
+            if html_reports:
+                for html_report in html_reports:
+                    iqms = extract_iqms_from_html(html_report)
+                    iqm_records.append(iqms)
+
+                # Save IQMs to CSV inside the MRIQC result folder
+                iqm_df = pd.DataFrame(iqm_records)
+                iqm_csv_path = result_dir / "MRIQC_IQMs.csv"
+                iqm_df.to_csv(iqm_csv_path, index=False)
+
+                st.success("IQMs extracted and CSV report created!")
+            else:
+                st.warning("No HTML reports found in MRIQC results.")
+
+            # Re-zip the results folder (including IQM CSV)
+            updated_zip_path = temp_dir / "mriqc_results_with_iqms.zip"
+            shutil.make_archive(
+                str(updated_zip_path.with_suffix('')), 'zip', root_dir=result_dir)
+
+            # Offer download button for the updated ZIP
+            with open(updated_zip_path, "rb") as f:
+                st.download_button(
+                    "Download All MRIQC Reports (including IQMs CSV)",
+                    data=f,
+                    file_name="mriqc_results_with_iqms.zip",
+                    mime="application/zip"
+                )
+
+            # Display the extracted IQMs in Streamlit
+            if iqm_records:
+                st.subheader("Extracted IQMs")
+                st.dataframe(iqm_df)
+
+            # Show logs if available
             log_files = list(result_dir.rglob("mriqc_log.txt"))
             if log_files:
                 with open(log_files[0], "r") as lf:
@@ -442,12 +448,6 @@ def main():
                         html_data, height=1000, scrolling=True)
 
             st.success("MRIQC processing complete!")
-
-        # Phase 3: Real-Time Log Viewer via WebSocket
-        # st.subheader("Real-Time MRIQC Log Viewer")
-        # st.write(
-            # "Connecting to your  WebSocket server (using default endpoints)...")
-        # Websocket_log_viewer(ws_url)"""
 
 
 if __name__ == "__main__":
