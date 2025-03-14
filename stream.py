@@ -19,8 +19,28 @@ st.markdown("""
 
 The WebQC App provides an intuitive web interface for running Quality Control on MRI datasets acquired in DICOM formats. The App offers users the ability to compute Image Quality Metrics (IQMs) for neuroimaging studies. 
 This web-based solution implements the original MRIQC standalone application in a user-friendly interface accessible from any device, without the need for software installation or access to resource-intensive computers. Thus, simplifying the quality control workflow. For a comprehensive understanding of the IQMs computed by MRIQC, as well as details on the original MRIQC implementation, refer to the official MRIQC documentation: https://mriqc.readthedocs.io.
-            
+""",
+            unsafe_allow_html=True
+            )
 
+st.markdown(
+    """
+    <div style="display: flex; justify-content: center; align-items: center; margin-top: 20px;">
+        <div class="sketchfab-embed-wrapper">
+            <iframe title="Plastinated Human Brain" frameborder="0" allowfullscreen mozallowfullscreen="true" webkitallowfullscreen="true" allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking execution-while-out-of-viewport execution-while-not-rendered web-share src="https://sketchfab.com/models/2df234ff65b0483fb5b5e15e40efa65d/embed?autostart=1&ui_watermark_link=0&ui_watermark=0&ui_theme=dark"></iframe>
+            <p style="font-size: 13px; font-weight: normal; margin: 5px; color: #4A4A4A;">
+                <a href="https://sketchfab.com/3d-models/plastinated-human-brain-2df234ff65b0483fb5b5e15e40efa65d?utm_medium=embed&utm_campaign=share-popup&utm_content=2df234ff65b0483fb5b5e15e40efa65d" target="_blank" rel="nofollow" style="font-weight: bold; color: #1CAAD9;">Plastinated Human Brain</a> by 
+                <a href="https://sketchfab.com/UBC.MEDVID?utm_medium=embed&utm_campaign=share-popup&utm_content=2df234ff65b0483fb5b5e15e40efa65d" target="_blank" rel="nofollow" style="font-weight: bold; color: #1CAAD9;">UBC Medicine - Educational Media</a> on 
+                <a href="https://sketchfab.com?utm_medium=embed&utm_campaign=share-popup&utm_content=2df234ff65b0483fb5b5e15e40efa65d" target="_blank" rel="nofollow" style="font-weight: bold; color: #1CAAD9;">Sketchfab</a>
+            </p>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    """
 ## How to Use:
 The app enables users to upload T1w, T2w, or BOLD fMRI DICOM files as a folder or zipped format, convert them to the Standard Brain Imaging Data Structure (BIDS) format using dcm2bids [1] via dcm2niiX [2], and then process the IQMs using MRIQC [3]. The resulting reports can be downloaded for further analysis. To use, follow the following steps:
             
