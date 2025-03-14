@@ -22,22 +22,10 @@ This web-based solution implements the original MRIQC standalone application in 
 """,
             unsafe_allow_html=True
             )
-
-st.markdown(
-    """
-    <div style="display: flex; justify-content: center; align-items: center; margin-top: 20px;">
-        <div class="sketchfab-embed-wrapper">
-            <iframe title="Plastinated Human Brain" frameborder="0" allowfullscreen mozallowfullscreen="true" webkitallowfullscreen="true" allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking execution-while-out-of-viewport execution-while-not-rendered web-share src="https://sketchfab.com/models/2df234ff65b0483fb5b5e15e40efa65d/embed?autostart=1&ui_watermark_link=0&ui_watermark=0&ui_theme=dark"></iframe>
-            <p style="font-size: 13px; font-weight: normal; margin: 5px; color: #4A4A4A;">
-                <a href="https://sketchfab.com/3d-models/plastinated-human-brain-2df234ff65b0483fb5b5e15e40efa65d?utm_medium=embed&utm_campaign=share-popup&utm_content=2df234ff65b0483fb5b5e15e40efa65d" target="_blank" rel="nofollow" style="font-weight: bold; color: #1CAAD9;">Plastinated Human Brain</a> by 
-                <a href="https://sketchfab.com/UBC.MEDVID?utm_medium=embed&utm_campaign=share-popup&utm_content=2df234ff65b0483fb5b5e15e40efa65d" target="_blank" rel="nofollow" style="font-weight: bold; color: #1CAAD9;">UBC Medicine - Educational Media</a> on 
-                <a href="https://sketchfab.com?utm_medium=embed&utm_campaign=share-popup&utm_content=2df234ff65b0483fb5b5e15e40efa65d" target="_blank" rel="nofollow" style="font-weight: bold; color: #1CAAD9;">Sketchfab</a>
-            </p>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+# Center an image below the header
+st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
+st.image("img.png", width=300)  # Adjust width as needed
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown(
     """
