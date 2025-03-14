@@ -277,19 +277,20 @@ def zip_directory(folder_path: Path, zip_file_path: Path):
 
 
 def extract_iqms_from_html(html_file: Path):
+    iqms = {}
     with open(html_file, 'r', encoding='utf-8') as file:
         soup = BeautifulSoup(file, 'html.parser')
 
-    iqms_data = {}
-    iqm_section = soup.find('div', id="other-collapseOne")
-
-    if iqm_section:
-        for tr in iqm_div.find_all('tr'):
-            cells = tr.find_all('td')
-            if len(cells) == 2:
-                metric_name = cells[0].text.strip()
-                metric_value = cells[1].text.strip()
+    iqm_table = soup.find("table", {"id": "iqms-table"})
+    if iqm_table:
+        rows = iqm_table.find_all("tr")
+        for row in rows:
+            cols = row.find_all("td")
+            if len(cols) == 2:
+                metric_name = cols[0].get_text(strip=True)
+                metric_value = cols[1].get_text(strip=True)
                 iqms[metric_name] = metric_value
+                
     return iqms
 
 
