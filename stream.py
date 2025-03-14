@@ -160,7 +160,8 @@ def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
     for fpath in tmp_folder.rglob("*"):
         if not fpath.is_file():
             continue
-        exts = "".join(fpath.suffixes)
+        exts = "".join(fpath.suffixes)  # e.g., ".nii.gz"
+        # Only process files with expected extensions.
         if not any(exts.endswith(e) for e in [".nii", ".nii.gz", ".json", ".bval", ".bvec"]):
             continue
         fname = fpath.name.lower()
@@ -184,15 +185,22 @@ def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
             suffix = "bold"
         else:
             continue
+
+        # Ensure target directory exists.
         target_dir = modality_paths[modality_label]
         if not target_dir.exists():
             target_dir.mkdir(parents=True, exist_ok=True)
-        new_basename = f"sub-{subj_id}"
+
+        # Construct the new filename: sub-{subj_id}[_ses-{ses_id}]_{suffix}{extension}
+        new_filename = f"sub-{subj_id}"
         if ses_id:
-            new_basename += f"_ses-{ses_id}"
-        new_basename += f"_{suffix}{exts}"
-        new_path = target_dir / new_basename
+            new_filename += f"_ses-{ses_id}"
+        new_filename += f"_{suffix}{exts}"
+        new_path = target_dir / new_filename
+
         fpath.rename(new_path)
+
+    # Remove the entire tmp_dcm2bids folder (its parent folder)
     shutil.rmtree(tmp_folder.parent, ignore_errors=True)
     st.info("Cleaned up leftover files in tmp_dcm2bids.")
 
