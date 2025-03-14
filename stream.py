@@ -391,66 +391,72 @@ def main():
                 st.error(f"MRIQC failed: {response.text}")
                 return
 
+            # Save the MRIQC results ZIP file received from server
+            result_zip = temp_dir / "mriqc_results.zip"
+            with open(result_zip, "wb") as f:
+                f.write(response.content)
+            st.success("MRIQC results received from server!")
+
+            # Extract the MRIQC results
             result_dir = temp_dir / "mriqc_results"
             result_dir.mkdir(exist_ok=True)
-
             with zipfile.ZipFile(result_zip, 'r') as zf:
                 zf.extractall(result_dir)
 
-            # --- Automatically extract IQMs and create CSV ---
+            # --- Automatically Extract IQMs from HTML Reports ---
+            def extract_iqms_from_html(html_file: Path):
+                iqms = {}
+                with open(html_file, 'r', encoding='utf-8') as file:
+                    soup = BeautifulSoup(file, 'html.parser')
+
+                iqm_table = soup.find("table", {"id": "iqms-table"})
+                if iqm_table:
+                    rows = iqm_table.find_all("tr")
+                    for row in rows:
+                        cols = row.find_all("td")
+                        if len(cols) == 2:
+                            metric_name = cols[0].text.strip()
+                            metric_value = cols[1].text.strip()
+                            iqms[metric_name] = metric_value
+                return iqms
+
+            iqm_records = []
             html_reports = list(result_dir.rglob("*.html"))
-            iqms_records = []
 
             if html_reports:
                 for html_file in html_reports:
                     iqms = extract_iqms_from_html(html_file)
                     iqms['Report Filename'] = html_file.name
-                    iqms_records.append(iqms)
+                    iqm_records.append(iqms)
 
-                iqms_df = pd.DataFrame(iqms_records)
+                iqms_df = pd.DataFrame(iqm_records)
 
-                # Save IQM CSV to results directory
+                # Save IQMs CSV directly into results directory
                 iqm_csv_path = result_dir / "MRIQC_IQMs.csv"
                 iqms_df.to_csv(iqm_csv_path, index=False)
-
                 st.success("IQMs extracted successfully from HTML reports!")
 
-                # Repackage results folder including IQM csv
-                updated_results_zip = temp_dir / "mriqc_results_with_IQMs.zip"
-                shutil.make_archive(
-                    updated_results_zip.with_suffix(''), 'zip', result_dir)
+                # Re-zip results folder including IQMs CSV
+                updated_zip_path = temp_dir / "mriqc_results_with_IQMs"
+                shutil.make_archive(str(updated_zip_path), 'zip', root_dir=result_dir)
 
-                # Streamlit button for downloading all reports including IQMs CSV
-                with open(updated_results_zip, "rb") as f:
+                # Single download button for complete package
+                with open(f"{updated_zip_path}.zip", "rb") as f:
                     st.download_button(
-                        "Download MRIQC Results with IQM CSV",
+                        "Download MRIQC Results (including IQMs CSV)",
                         data=f,
                         file_name="mriqc_results_with_IQMs.zip",
                         mime="application/zip"
                     )
+
+                # Optionally display IQMs dataframe in the app
+                st.subheader("Extracted Image Quality Metrics (IQMs)")
+                st.dataframe(iqms_df)
+
             else:
-                st.warning("No HTML reports found to extract IQMs.")
+                st.warning("No HTML reports found in MRIQC results for IQM extraction.")
 
-            # Re-zip the results folder (including IQM CSV)
-            updated_zip_path = temp_dir / "mriqc_results_with_iqms.zip"
-            shutil.make_archive(
-                str(updated_zip_path.with_suffix('')), 'zip', root_dir=result_dir)
-
-            # Offer download button for the updated ZIP
-            with open(updated_zip_path, "rb") as f:
-                st.download_button(
-                    "Download All MRIQC Reports (including IQMs CSV)",
-                    data=f,
-                    file_name="mriqc_results_with_iqms.zip",
-                    mime="application/zip"
-                )
-
-            # Display the extracted IQMs in Streamlit
-            if iqm_records:
-                st.subheader("Extracted IQMs")
-                st.dataframe(iqm_df)
-
-            # Show logs if available
+            # Display MRIQC log if exists
             log_files = list(result_dir.rglob("mriqc_log.txt"))
             if log_files:
                 with open(log_files[0], "r") as lf:
@@ -460,17 +466,14 @@ def main():
             else:
                 st.warning("No MRIQC log file found.")
 
-            html_reports = list(result_dir.rglob("*.html"))
-            if not html_reports:
-                st.warning("No HTML reports found in MRIQC results.")
-            else:
-                for report in html_reports:
-                    with open(report, "r") as rf:
-                        html_data = rf.read()
-                    st.components.v1.html(
-                        html_data, height=1000, scrolling=True)
+            # Display HTML reports inline in Streamlit
+            for report in html_reports:
+                with open(report, "r") as rf:
+                    html_data = rf.read()
+                st.components.v1.html(html_data, height=1000, scrolling=True)
 
-            st.success("MRIQC processing complete!")
+            st.success("MRIQC processing and IQM extraction complete!")
+
 
 
 if __name__ == "__main__":
