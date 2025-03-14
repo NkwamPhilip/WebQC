@@ -26,13 +26,13 @@ The app enables users to upload T1w, T2w, or BOLD fMRI DICOM files as a folder o
             
 1. Enter Subject ID (optional)
 2. Enter the Session ID (optional, e.g, baseline, follow up, etc)
-3. Select your preferred modality for analysis (T1w or T2w, or BOLD fMRI)
-4. Upload a zipped file/folder containing T1w, T2w, or BOLD fMRI DICOM images by dragging and dropping the zipped file or uploading using the browse file option
+3. Select your preferred modality for analysis (T1w, T2w, DWI, or BOLD fMRI)
+4. Upload a zipped file/folder containing T1w, T2w, DWI, or BOLD fMRI DICOM images by dragging and dropping the zipped file or uploading using the browse file option
 5. Click DICOM → BIDS Conversion
 6. Once BIDS converted, you will see the notification: DICOM to BIDS conversion complete
 7. Click Send BIDS to Web for MRIQC or if you want the BIDS format, Click Download BIDS Dataset to your device. 
 8. Send the converted BIDS images to MRIQC by clicking Send BIDS to Web for MRIQC  for generating the IQMs
-9. Depending on your internet connection, this can take up to 5 minutes for a T1w anatomical image.
+9. Depending on your internet connection, this can between 5-10 minutes to get your results for a single participant.
 10. When completed, you can view the report on the web App or download the report of the IQM by clicking the “Download MRIQC results” button including the csv export.
            
             
