@@ -312,7 +312,7 @@ def main():
 
     selected_modalities = st.multiselect(
         "Select MRIQC modalities:",
-        ["T1w", "T2w", "bold", "Flair"],
+        ["T1w", "T2w", "bold", "flair", "dwi"],
         default=["T1w"]
     )
     modalities_str = " ".join(selected_modalities)
