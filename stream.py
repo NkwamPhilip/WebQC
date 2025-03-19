@@ -492,12 +492,15 @@ if __name__ == "__main__":
 # )
 
 
-col1, col2, col3 = st.columns([1, 2, 1])
+# Adjust column widths to center contents
+col1, col2 = st.columns([1, 3])
+
+with col1:
+    st.image("MLAB.png", width=250)
 
 with col2:
-    st.image("MLAB.png", width=300)
     st.markdown(
-        "<h2 style='text-align: center;'>Medical Artificial Intelligence Lab</h2>",
+        "<h2 style='padding-top: 40px;'>Medical Artificial Intelligence Lab</h2>",
         unsafe_allow_html=True
     )
 
