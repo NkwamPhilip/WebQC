@@ -494,7 +494,7 @@ if __name__ == "__main__":
 
 st.markdown("""
 <div style='text-align: center;'>
-    <img src='https://raw.githubusercontent.com/NkwamPhilip/WebQC/main/MLAB.png' width='300'/>
+    <img src='https://drive.google.com/file/d/1ftcu8ChlMAJWdl00tDntHXMfh5tgxXO2/view?usp=sharing' width='300'/>
     <h2>Medical Artificial Intelligence Lab</h2>
 </div>
 """, unsafe_allow_html=True)
