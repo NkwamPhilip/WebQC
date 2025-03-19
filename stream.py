@@ -493,7 +493,7 @@ if __name__ == "__main__":
 st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
 st.image("MLAB.png", width=300)  # Adjust width as needed
 st.markdown("</div>", unsafe_allow_html=True)
-st.markdown("Medical Artificial Intelligence Lab", unsafe_allow_html=True)
+st.markdown("## Medical Artificial Intelligence Lab", unsafe_allow_html=True)
 st.markdown(
     """
     <style>
@@ -519,7 +519,7 @@ st.markdown(
     }
     </style>
     <div class="custom-footer">
-        <strong>Medical Artificial Intelligence Lab, contact email: info@mailab.io </strong> – © 2025 All Rights Reserved
+        <strong>Medical Artificial Intelligence Lab || Contact Email: info@mailab.io </strong> – © 2025 All Rights Reserved
 
     </div>
     """,
