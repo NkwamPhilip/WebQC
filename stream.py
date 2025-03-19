@@ -492,11 +492,12 @@ if __name__ == "__main__":
 # )
 
 
-st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
-st.image("MLAB.png", width=300)
-st.markdown("</div>", unsafe_allow_html=True)
-st.markdown("<h2 style='text-align: center;'>Medical Artificial Intelligence Lab</h2>",
-            unsafe_allow_html=True)
+st.markdown("""
+<div style='display: flex; flex-direction: column; align-items: center;'>
+    <img src='MLAB.png' width='300'>
+    <h2>Medical Artificial Intelligence Lab</h2>
+</div>
+""", unsafe_allow_html=True)
 
 
 st.markdown(
