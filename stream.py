@@ -492,6 +492,11 @@ if __name__ == "__main__":
 # )
 
 
+# Container with collective padding
+st.markdown("""
+    <div style="padding: 100px;">
+""", unsafe_allow_html=True)
+
 # Adjust column widths to center contents
 col1, col2 = st.columns([1, 3])
 
@@ -503,6 +508,9 @@ with col2:
         "<h2 style='padding-top: 40px;'>Medical Artificial Intelligence Lab</h2>",
         unsafe_allow_html=True
     )
+
+# Close container div
+st.markdown("</div>", unsafe_allow_html=True)
 
 
 st.markdown(
