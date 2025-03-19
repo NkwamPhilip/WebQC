@@ -492,8 +492,13 @@ if __name__ == "__main__":
 # )
 
 
-st.image("MLAB.png", width=300)  # Adjust width as needed
-st.markdown("## Medical Artificial Intelligence Lab", unsafe_allow_html=True)
+st.markdown("""
+<div style='text-align: center;'>
+    <img src='MLAB.png' width='300' style='margin-bottom:10px;'/>
+    <h2>Medical Artificial Intelligence Lab</h2>
+</div>
+""", unsafe_allow_html=True)
+
 st.markdown(
     """
     <style>
