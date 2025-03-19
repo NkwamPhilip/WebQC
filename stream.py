@@ -24,10 +24,6 @@ This web-based solution implements the original MRIQC standalone application in 
 """,
             unsafe_allow_html=True
             )
-# Center an image below the header
-st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
-st.image("img.png", width=300)  # Adjust width as needed
-st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown(
     """
@@ -290,7 +286,7 @@ def extract_iqms_from_html(html_file: Path):
                 metric_name = cols[0].get_text(strip=True)
                 metric_value = cols[1].get_text(strip=True)
                 iqms[metric_name] = metric_value
-                
+
     return iqms
 
 
@@ -439,7 +435,8 @@ def main():
 
                 # Re-zip results folder including IQMs CSV
                 updated_zip_path = temp_dir / "mriqc_results_with_IQMs"
-                shutil.make_archive(str(updated_zip_path), 'zip', root_dir=result_dir)
+                shutil.make_archive(str(updated_zip_path),
+                                    'zip', root_dir=result_dir)
 
                 # Single download button for complete package
                 with open(f"{updated_zip_path}.zip", "rb") as f:
@@ -455,7 +452,8 @@ def main():
                 st.dataframe(iqms_df)
 
             else:
-                st.warning("No HTML reports found in MRIQC results for IQM extraction.")
+                st.warning(
+                    "No HTML reports found in MRIQC results for IQM extraction.")
 
             # Display MRIQC log if exists
             log_files = list(result_dir.rglob("mriqc_log.txt"))
@@ -476,7 +474,6 @@ def main():
             st.success("MRIQC processing and IQM extraction complete!")
 
 
-
 if __name__ == "__main__":
     main()
 
@@ -494,7 +491,8 @@ if __name__ == "__main__":
  #   unsafe_allow_html=True
 # )
 st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
-st.image("img.png", width=300)  # Adjust width as needed
+st.image("MLAB.png", width=300)  # Adjust width as needed
+st.markdown("Medical Artificial Intelligence Lab", unsafe_allow_html=True)
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown(
