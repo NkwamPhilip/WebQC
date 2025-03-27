@@ -168,125 +168,125 @@ def run_dcm2bids(dicom_dir: Path, bids_out: Path, subj_id: str, ses_id: str, con
 
 def organize_dicom_conversion(bids_out: Path, subj_id: str, ses_id: str):
     """
-    Organize DICOM-converted files into BIDS by picking the largest file per series
-    (based on SeriesDescription or fallback to file name).
+    Organize DICOM-converted files into BIDS by picking the best file per series
+    based on both SeriesDescription and file size.
     """
     tmp_folder = bids_out / "tmp_dcm2bids"
     if not tmp_folder.exists():
         st.warning(f"Temporary conversion folder not found: {tmp_folder}")
         return
 
-    # 1) Collect all relevant files
-    all_nifti = list(tmp_folder.rglob("*.nii")) + \
-        list(tmp_folder.rglob("*.nii.gz"))
-    if not all_nifti:
-        st.warning("No NIfTI files found in the tmp folder.")
-        return
-
-    # 2) Group files by SeriesDescription
-    #    We'll store: series_groups[series_description] = list of dicts with { 'nifti': Path, 'size': int, 'json': Path, ... }
+    # 1) First group files by their SeriesInstanceUID (most reliable)
     series_groups = {}
+    for nifti_file in tmp_folder.rglob("*.nii*"):
+        # Handle both .nii and .nii.gz
+        if nifti_file.suffix == ".gz":
+            base_stem = nifti_file.name.replace(".nii.gz", "")
+            ext = ".nii.gz"
+        else:
+            base_stem = nifti_file.stem
+            ext = ".nii"
 
-    for nifti_file in all_nifti:
-        base_stem = nifti_file.stem.split(".")[0]  # handle .nii.gz properly
-        sidecar_json = nifti_file.with_suffix(
-            ".json") if nifti_file.suffix == ".nii" else nifti_file.with_name(base_stem + ".json")
+        # Find associated JSON sidecar
+        json_file = nifti_file.parent / f"{base_stem}.json"
 
-        # Attempt to read the sidecar's SeriesDescription
+        # Read metadata from sidecar if available
+        series_uid = None
         series_desc = None
-        if sidecar_json.exists():
+        if json_file.exists():
             try:
-                with open(sidecar_json, "r") as f:
+                with open(json_file, 'r') as f:
                     meta = json.load(f)
+                series_uid = meta.get("SeriesInstanceUID", "")
                 series_desc = meta.get("SeriesDescription", "").strip().lower()
-            except Exception:
-                pass
+            except Exception as e:
+                st.warning(
+                    f"Could not read JSON sidecar for {nifti_file}: {str(e)}")
 
-        # If no sidecar or no SeriesDescription, fallback to checking file name
-        if not series_desc:
-            # e.g. "t1", "t2", "flair", "bold", "dwi" from the file name
-            fname_lower = nifti_file.name.lower()
-            if "t1" in fname_lower:
-                series_desc = "t1"
-            elif "t2" in fname_lower:
-                series_desc = "t2"
-            elif "flair" in fname_lower or "fluid" in fname_lower:
-                series_desc = "flair"
-            elif "dwi" in fname_lower or "dti" in fname_lower:
-                series_desc = "dwi"
-            elif any(x in fname_lower for x in ["bold", "fmri", "func", "task"]):
-                series_desc = "bold"
+        # Fallback to filename parsing if no SeriesInstanceUID
+        if not series_uid:
+            # Try to extract from filename (dcm2niix often includes it)
+            uid_match = re.search(
+                r"_(ses-)?[a-zA-Z0-9]+-([a-z0-9]+)_", nifti_file.name)
+            if uid_match:
+                series_uid = uid_match.group(2)
             else:
-                # As a last fallback, use the base_stem
-                series_desc = base_stem.lower()
+                # As last resort, use filename stem as UID
+                series_uid = base_stem
 
-        # Prepare a dictionary of associated sidecars
-        bval_file = nifti_file.with_suffix(".bval")
-        bvec_file = nifti_file.with_suffix(".bvec")
-
-        # Build a record
+        # Create record with all relevant info
         record = {
-            "nifti": nifti_file,
-            "size": nifti_file.stat().st_size,
-            "json": sidecar_json if sidecar_json.exists() else None,
-            "bval": bval_file if bval_file.exists() else None,
-            "bvec": bvec_file if bvec_file.exists() else None,
+            'nifti': nifti_file,
+            'size': nifti_file.stat().st_size,
+            'json': json_file if json_file.exists() else None,
+            'series_desc': series_desc,
+            'series_uid': series_uid
         }
 
-        series_groups.setdefault(series_desc, []).append(record)
+        # Group by SeriesInstanceUID first
+        series_groups.setdefault(series_uid, []).append(record)
 
-    # 3) For each series_description group, pick the single largest file
-    for series_desc, files_list in series_groups.items():
-        largest_record = max(files_list, key=lambda x: x["size"])
-        largest_file = largest_record["nifti"]
-        largest_size_mb = largest_record["size"] / (1024 * 1024)
-        st.info(
-            f"Series: {series_desc} | Picked largest file: {largest_file.name} ({largest_size_mb:.1f} MB)")
+    # 2) For each unique series, pick the best file
+    for series_uid, files in series_groups.items():
+        if len(files) == 1:
+            # Only one file in this series
+            best_file = files[0]
+        else:
+            # Multiple files - first try to find one with proper SeriesDescription
+            described_files = [f for f in files if f['series_desc']]
+            if described_files:
+                # Pick largest file among those with descriptions
+                best_file = max(described_files, key=lambda x: x['size'])
+            else:
+                # No descriptions - just pick largest
+                best_file = max(files, key=lambda x: x['size'])
 
-        # Determine the BIDS modality from the series_desc or fallback to name
-        modality, suffix = guess_bids_modality(series_desc, largest_file)
+        # Determine modality
+        modality, suffix = guess_bids_modality(
+            best_file['series_desc'] or "", best_file['nifti'])
 
-        # Build the final BIDS name
+        # Build BIDS filename
         bids_name = f"sub-{subj_id}"
         if ses_id:
             bids_name += f"_ses-{ses_id}"
 
-        # For functional data, try to parse 'task-???'
+        # Handle task naming for functional data
         if modality == "func":
-            # Default to 'rest' if no explicit "task-" is found
             task_match = re.search(
-                r"task-([a-zA-Z0-9]+)", largest_file.name, re.IGNORECASE)
+                r"task-([a-zA-Z0-9]+)", best_file['nifti'].name, re.IGNORECASE)
             task_name = task_match.group(1) if task_match else "rest"
             bids_name += f"_task-{task_name}"
 
-        # Append suffix (e.g., T1w, T2w, dwi, bold, etc.) + file extension
-        # The largest file might be .nii or .nii.gz
-        ext = ".nii.gz" if largest_file.suffix == ".gz" else ".nii"
+        # Add suffix and extension
+        ext = ".nii.gz" if best_file['nifti'].suffix == ".gz" else ".nii"
         bids_name += f"_{suffix}{ext}"
 
-        # Create the BIDS subfolder
+        # Create target directory
         target_dir = bids_out / f"sub-{subj_id}"
         if ses_id:
             target_dir = target_dir / f"ses-{ses_id}"
         target_dir = target_dir / modality
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        # Move the largest NIfTI
-        final_nifti_path = target_dir / bids_name
-        shutil.move(str(largest_file), str(final_nifti_path))
-        st.success(f"Moved NIfTI: {final_nifti_path}")
+        # Move files
+        final_nifti = target_dir / bids_name
+        shutil.move(str(best_file['nifti']), str(final_nifti))
 
-        # Move sidecars if present
-        for side_ext in ["json", "bval", "bvec"]:
-            side_path = largest_record[side_ext]
-            if side_path and side_path.exists():
-                new_side_path = final_nifti_path.with_suffix(f".{side_ext}")
-                shutil.move(str(side_path), str(new_side_path))
-                st.info(f"└─ Moved sidecar: {new_side_path.name}")
+        # Move sidecars if they exist
+        if best_file['json'] and best_file['json'].exists():
+            final_json = final_nifti.with_suffix('.json')
+            shutil.move(str(best_file['json']), str(final_json))
 
-    # 4) Cleanup
+        # Move bval/bvec if they exist (for DWI)
+        for ext in ['bval', 'bvec']:
+            sidecar = best_file['nifti'].with_suffix(f'.{ext}')
+            if sidecar.exists():
+                final_sidecar = final_nifti.with_suffix(f'.{ext}')
+                shutil.move(str(sidecar), str(final_sidecar))
+
+    # 3) Cleanup
     shutil.rmtree(tmp_folder, ignore_errors=True)
-    st.success("BIDS organization complete - removed temporary files.")
+    st.success("BIDS organization complete!")
 
 
 def guess_bids_modality(series_desc: str, nifti_file: Path):
