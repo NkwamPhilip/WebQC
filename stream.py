@@ -10,6 +10,9 @@ from pathlib import Path
 import os
 import json
 import datetime
+import numpy as np
+import nibabel as nib
+from pydicom import dcmread  # For validation
 
 # ------------------------------
 # Streamlit Page Configuration & Branding
@@ -151,136 +154,181 @@ def run_dcm2bids(dicom_dir: Path, bids_out: Path, subj_id: str, ses_id: str, con
         # st.text(result.stdout)
 
 
-def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
-    tmp_folder = bids_out / "tmp_dcm2bids" / f"sub-{subj_id}"
-    if ses_id:
-        tmp_folder = tmp_folder / f"ses-{ses_id}"
+def organize_dicom_conversion(bids_out: Path, subj_id: str, ses_id: str):
+    """State-of-the-art DICOM series handling with clinical-grade heuristics"""
+    tmp_folder = bids_out / "tmp_dcm2bids"
 
     if not tmp_folder.exists():
-        st.warning(f"Temporary folder not found: {tmp_folder}")
+        st.warning(f"Temporary conversion folder not found: {tmp_folder}")
         return
 
-    sub_dir = bids_out / f"sub-{subj_id}"
-    ses_dir = sub_dir / f"ses-{ses_id}" if ses_id else sub_dir
-    ses_dir.mkdir(parents=True, exist_ok=True)
+    # 1. First collect all files with metadata
+    file_metadata = []
+    for fpath in tmp_folder.rglob('*'):
+        if fpath.is_file() and fpath.suffix.lower() in ['.nii', '.gz', '.json', '.bval', '.bvec']:
+            try:
+                metadata = {
+                    'path': fpath,
+                    'size': fpath.stat().st_size,
+                    'type': 'unknown'
+                }
 
-    # Create all possible modality directories
-    modality_paths = {
-        "anat": ses_dir / "anat",
-        "dwi": ses_dir / "dwi",
-        "func": ses_dir / "func",
-        "fmap": ses_dir / "fmap"  # Added for field maps
-    }
-    for path in modality_paths.values():
-        path.mkdir(exist_ok=True)
-
-    # Walk through all files in tmp folder
-    for fpath in tmp_folder.rglob("*"):
-        if not fpath.is_file():
-            continue
-
-        # Skip non-image/non-json files
-        if not any(fpath.name.lower().endswith(ext) for ext in [".nii", ".nii.gz", ".json", ".bval", ".bvec"]):
-            continue
-
-        # Determine modality and suffix based on BIDS filename patterns
-        fname = fpath.name.lower()
-        modality_label = None
-        suffix = None
-
-        # Check for anatomical images
-        if "t1" in fname or "_t1" in fname:
-            modality_label = "anat"
-            suffix = "T1w"
-        elif "t2" in fname or "_t2" in fname:
-            modality_label = "anat"
-            suffix = "T2w"
-        elif "flair" in fname or "fluid" in fname:
-            modality_label = "anat"
-            suffix = "FLAIR"
-        # Check for diffusion images
-        elif "dwi" in fname or "dti" in fname:
-            modality_label = "dwi"
-            suffix = "dwi"
-        # Check for functional images
-        elif any(x in fname for x in ["bold", "fmri", "func", "task"]):
-            modality_label = "func"
-            suffix = "bold"
-        # Check for field maps
-        elif any(x in fname for x in ["phasediff", "magnitude", "fieldmap"]):
-            modality_label = "fmap"
-            suffix = "phasediff" if "phasediff" in fname else "magnitude"
-        else:
-            # Fallback: try to determine from file extensions
-            if fname.endswith(".bval") or fname.endswith(".bvec"):
-                modality_label = "dwi"
-                suffix = "dwi"
-            elif fname.endswith(".json"):
-                # Try to read JSON sidecar to determine type
-                try:
+                # Read NIfTI header or JSON sidecar
+                if fpath.suffix.lower() in ['.nii', '.gz']:
+                    img = nib.load(str(fpath))
+                    metadata['dimensions'] = img.header.get_data_shape()
+                    metadata['voxel_size'] = img.header.get_zooms()
+                elif fpath.suffix.lower() == '.json':
                     with open(fpath, 'r') as f:
                         sidecar = json.load(f)
-                    if "Modality" in sidecar:
-                        if sidecar["Modality"].lower() == "mr":
-                            if "ImageType" in sidecar:
-                                if "DIFFUSION" in sidecar["ImageType"]:
-                                    modality_label = "dwi"
-                                    suffix = "dwi"
-                                elif "BOLD" in sidecar["ImageType"]:
-                                    modality_label = "func"
-                                    suffix = "bold"
-                                else:
-                                    modality_label = "anat"
-                                    suffix = "T1w"  # default fallback
-                except:
-                    pass
+                    metadata.update(sidecar)
 
-        if not modality_label:
-            st.warning(f"Could not determine modality for file: {fpath.name}")
+                file_metadata.append(metadata)
+            except Exception as e:
+                st.warning(
+                    f"Could not read metadata for {fpath.name}: {str(e)}")
+
+    # 2. Classify using multi-level heuristics
+    for meta in file_metadata:
+        # Level 1: Use DICOM-derived JSON metadata if available
+        if 'SeriesDescription' in meta:
+            desc = meta['SeriesDescription'].lower()
+            if 't1' in desc:
+                meta['type'] = 'T1w'
+            elif 't2' in desc:
+                meta['type'] = 'T2w'
+            elif 'flair' in desc:
+                meta['type'] = 'FLAIR'
+            elif any(x in desc for x in ['dwi', 'diffusion']):
+                meta['type'] = 'dwi'
+            elif any(x in desc for x in ['bold', 'fmri', 'func']):
+                meta['type'] = 'bold'
+
+        # Level 2: Fallback to filename patterns
+        if meta['type'] == 'unknown':
+            fname = meta['path'].name.lower()
+            if 't1' in fname:
+                meta['type'] = 'T1w'
+            elif 't2' in fname:
+                meta['type'] = 'T2w'
+            elif any(x in fname for x in ['flair', 'fluid']):
+                meta['type'] = 'FLAIR'
+            elif any(x in fname for x in ['dwi', 'dti']):
+                meta['type'] = 'dwi'
+            elif any(x in fname for x in ['bold', 'fmri']):
+                meta['type'] = 'bold'
+
+        # Level 3: Image characteristics fallback
+        if meta['type'] == 'unknown' and 'dimensions' in meta:
+            dims = meta['dimensions']
+            # Functional typically has 4D (x,y,z,t) with t>1
+            if len(dims) == 4 and dims[3] > 1:
+                meta['type'] = 'bold'
+            # Structural typically 3D with small voxels
+            elif len(dims) == 3 and meta.get('voxel_size', [10])[0] < 2.0:
+                meta['type'] = 'T1w'  # Most common default
+
+    # 3. Group by series (using ProtocolName + SeriesNumber)
+    series_groups = {}
+    for meta in file_metadata:
+        key = (meta.get('ProtocolName', 'unknown'),
+               meta.get('SeriesNumber', 0))
+        series_groups.setdefault(key, []).append(meta)
+
+    # 4. Select best representative for each series
+    bids_files = []
+    for series, files in series_groups.items():
+        # Prefer NIfTI over JSON/BVAL/BVEC
+        niftis = [f for f in files if f['path'].suffix.lower() in [
+            '.nii', '.gz']]
+        if not niftis:
             continue
 
-        # Construct new filename according to BIDS specification
-        new_filename = f"sub-{subj_id}"
+        # Select largest NIfTI by voxel dimensions (not just file size)
+        primary = max(niftis, key=lambda x: np.prod(x.get('dimensions', [1])))
+
+        # Find associated files
+        associated = [
+            f for f in files
+            if f['path'].stem == primary['path'].stem
+            and f['path'] != primary['path']
+        ]
+
+        bids_files.append({
+            'primary': primary,
+            'associated': associated,
+            'series_type': primary['type']
+        })
+
+    # 5. Organize into BIDS structure
+    for group in bids_files:
+        mod_type = group['series_type']
+        if mod_type in ['T1w', 'T2w', 'FLAIR']:
+            target_mod = 'anat'
+            suffix = mod_type
+        elif mod_type == 'dwi':
+            target_mod = 'dwi'
+            suffix = 'dwi'
+        elif mod_type == 'bold':
+            target_mod = 'func'
+            suffix = 'bold'
+        else:
+            continue
+
+        # Create BIDS filename
+        bids_name = f"sub-{subj_id}"
         if ses_id:
-            new_filename += f"_ses-{ses_id}"
+            bids_name += f"_ses-{ses_id}"
 
-        # Add modality-specific components
-        if modality_label == "func":
-            # Try to extract task name (if present in original filename)
-            task_match = re.search(r'task-([a-zA-Z0-9]+)', fname)
-            task_name = task_match.group(1) if task_match else "rest"
-            new_filename += f"_task-{task_name}"
+        if target_mod == 'func':
+            task_name = group['primary'].get('TaskName', 'rest')
+            bids_name += f"_task-{task_name}"
 
-        new_filename += f"_{suffix}{fpath.suffix.lower()}"
+        bids_name += f"_{suffix}{group['primary']['path'].suffix}"
 
-        # Handle special cases
-        if fpath.name.endswith(".bval"):
-            new_filename = new_filename.replace(
-                ".nii.gz", "").replace(".nii", "")
-        elif fpath.name.endswith(".bvec"):
-            new_filename = new_filename.replace(
-                ".nii.gz", "").replace(".nii", "")
-        elif fpath.name.endswith(".json"):
-            new_filename = new_filename.replace(
-                ".nii.gz", ".json").replace(".nii", ".json")
+        # Move files
+        target_dir = bids_out / f"sub-{subj_id}"
+        if ses_id:
+            target_dir = target_dir / f"ses-{ses_id}"
+        target_dir = target_dir / target_mod
+        target_dir.mkdir(parents=True, exist_ok=True)
 
-        target_dir = modality_paths[modality_label]
-        new_path = target_dir / new_filename
+        # Move primary file
+        new_path = target_dir / bids_name
+        group['primary']['path'].rename(new_path)
 
-        # Ensure we don't overwrite existing files
-        counter = 1
-        while new_path.exists():
-            new_filename = f"{new_filename.split('.')[0]}_{counter}.{new_filename.split('.')[-1]}"
-            new_path = target_dir / new_filename
-            counter += 1
+        # Move associated files
+        for assoc in group['associated']:
+            if assoc['path'].suffix.lower() == '.json':
+                assoc_path = new_path.with_suffix('.json')
+            elif assoc['path'].suffix.lower() == '.bval':
+                assoc_path = new_path.with_suffix('.bval')
+            elif assoc['path'].suffix.lower() == '.bvec':
+                assoc_path = new_path.with_suffix('.bvec')
+            else:
+                continue
 
-        # Move/rename the file
-        fpath.rename(new_path)
-        st.info(f"Moved {fpath.name} → {new_path.relative_to(bids_out)}")
+            assoc['path'].rename(assoc_path)
+            st.info(
+                f"Moved associated file: {assoc['path'].name} → {assoc_path.relative_to(bids_out)}")
 
-    # Clean up temporary folder
-    shutil.rmtree(tmp_folder.parent, ignore_errors=True)
-    st.success("Successfully organized all files into BIDS structure")
+    # Cleanup
+    shutil.rmtree(tmp_folder, ignore_errors=True)
+    st.success("BIDS organization complete - removed temporary files")
+
+
+def validate_dicom_series(dicom_dir: Path):
+    """Quick validation of DICOM consistency"""
+    from pydicom import dcmread
+    series = {}
+    for dcm_file in dicom_dir.rglob('*'):
+        try:
+            ds = dcmread(str(dcm_file), stop_before_pixels=True)
+            key = (ds.SeriesInstanceUID, ds.SeriesNumber)
+            series.setdefault(key, []).append(dcm_file)
+        except:
+            continue
+    return series
 
 
 def create_bids_top_level_files(bids_dir: Path, subject_id: str):
@@ -412,7 +460,10 @@ def main():
                 config_file = generate_dcm2bids_config(temp_dir)
                 run_dcm2bids(dicom_dir, bids_out, subj_id, ses_id, config_file)
 
-                move_files_in_tmp(bids_out, subj_id, ses_id)
+                organize_dicom_conversion(bids_out, subj_id, ses_id)
+                # After DICOM extraction
+                dicom_series = validate_dicom_series(dicom_dir)
+                st.info(f"Found {len(dicom_series)} DICOM series")
                 create_bids_top_level_files(bids_out, subj_id)
 
                 ds_file = bids_out / "dataset_description.json"
