@@ -1,5 +1,3 @@
-from pydicom import dcmread
-import re
 import pandas as pd
 from bs4 import BeautifulSoup
 import streamlit as st
@@ -12,9 +10,6 @@ from pathlib import Path
 import os
 import json
 import datetime
-import numpy as np
-import nibabel as nib
-from pydicom import dcmread  # For validation
 
 # ------------------------------
 # Streamlit Page Configuration & Branding
@@ -131,7 +126,7 @@ def generate_dcm2bids_config(temp_dir: Path) -> Path:
             {
                 "dataType": "func",
                 "modalityLabel": "bold",
-                "criteria": {"SeriesDescription": "(?i).*bold.*|.*fmri.*|.*FMRI.*|.*run.*|.*fMRI.*"},
+                "criteria": {"SeriesDescription": "(?i).*bold.*|.*fmri.*|.*FMRI.*|.*BRAIN.*|.*magnitude.*"},
                 "sidecarChanges": {"ProtocolName": "BOLD"}
             }
         ]
@@ -156,177 +151,67 @@ def run_dcm2bids(dicom_dir: Path, bids_out: Path, subj_id: str, ses_id: str, con
         # st.text(result.stdout)
 
 
-# ------------------------------
-# Streamlit Page Configuration & Branding
-# ------------------------------
-
-
-# ------------------------------
-# Helper Functions (Updated)
-# ------------------------------
-
-
-def organize_dicom_conversion(bids_out: Path, subj_id: str, ses_id: str):
-    """
-    Organize DICOM-converted files into BIDS by picking the best file per series
-    based on both SeriesDescription and file size.
-    """
-    tmp_folder = bids_out / "tmp_dcm2bids"
+def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
+    tmp_folder = bids_out / "tmp_dcm2bids" / f"sub-{subj_id}_ses-{ses_id}"
     if not tmp_folder.exists():
-        st.warning(f"Temporary conversion folder not found: {tmp_folder}")
         return
+    sub_dir = bids_out / f"sub-{subj_id}"
+    ses_dir = sub_dir / f"ses-{ses_id}" if ses_id else sub_dir
+    ses_dir.mkdir(parents=True, exist_ok=True)
+    modality_paths = {
+        "anat": ses_dir / "anat",
+        "dwi": ses_dir / "dwi",
+        "func": ses_dir / "func"
+    }
+    for fpath in tmp_folder.rglob("*"):
+        if not fpath.is_file():
+            continue
+        exts = "".join(fpath.suffixes)
+        if not any(exts.endswith(e) for e in [".nii", ".nii.gz", ".json", ".bval", ".bvec"]):
+            continue
+        fname = fpath.name.lower()
+        if "t1" in fname:
+            modality_label = "anat"
+            suffix = "T1w"
+        elif "t2" in fname:
+            modality_label = "anat"
+            suffix = "T2w"
+        elif "flair" in fname:
+            modality_label = "anat"
+            suffix = "FLAIR"
+        elif "fluid" in fname:
+            modality_label = "anat"
+            suffix = "FLAIR"
+        elif "dwi" in fname or "dti" in fname:
+            modality_label = "dwi"
+            suffix = "dwi"
+        elif "bold" in fname or "fmri" in fname or "FMRI" in fname or "BRAIN" in fname or "magnitude" in fname:
+            modality_label = "func"
+            suffix = "bold"
+        else:
+            continue
 
-    # 1) First group files by their SeriesInstanceUID (most reliable)
-    series_groups = {}
-    for nifti_file in tmp_folder.rglob("*.nii*"):
-        # Handle both .nii and .nii.gz
-        if nifti_file.suffix == ".gz":
-            base_stem = nifti_file.name.replace(".nii.gz", "")
+        target_dir = modality_paths[modality_label]
+        if not target_dir.exists():
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+        # Determine the correct extension: if the file ends with ".nii.gz", use that.
+        if fpath.name.lower().endswith(".nii.gz"):
             ext = ".nii.gz"
         else:
-            base_stem = nifti_file.stem
-            ext = ".nii"
+            ext = fpath.suffix
 
-        # Find associated JSON sidecar
-        json_file = nifti_file.parent / f"{base_stem}.json"
-
-        # Read metadata from sidecar if available
-        series_uid = None
-        series_desc = None
-        if json_file.exists():
-            try:
-                with open(json_file, 'r') as f:
-                    meta = json.load(f)
-                series_uid = meta.get("SeriesInstanceUID", "")
-                series_desc = meta.get("SeriesDescription", "").strip().lower()
-            except Exception as e:
-                st.warning(
-                    f"Could not read JSON sidecar for {nifti_file}: {str(e)}")
-
-        # Fallback to filename parsing if no SeriesInstanceUID
-        if not series_uid:
-            # Try to extract from filename (dcm2niix often includes it)
-            uid_match = re.search(
-                r"_(ses-)?[a-zA-Z0-9]+-([a-z0-9]+)_", nifti_file.name)
-            if uid_match:
-                series_uid = uid_match.group(2)
-            else:
-                # As last resort, use filename stem as UID
-                series_uid = base_stem
-
-        # Create record with all relevant info
-        record = {
-            'nifti': nifti_file,
-            'size': nifti_file.stat().st_size,
-            'json': json_file if json_file.exists() else None,
-            'series_desc': series_desc,
-            'series_uid': series_uid
-        }
-
-        # Group by SeriesInstanceUID first
-        series_groups.setdefault(series_uid, []).append(record)
-
-    # 2) For each unique series, pick the best file
-    for series_uid, files in series_groups.items():
-        if len(files) == 1:
-            # Only one file in this series
-            best_file = files[0]
-        else:
-            # Multiple files - first try to find one with proper SeriesDescription
-            described_files = [f for f in files if f['series_desc']]
-            if described_files:
-                # Pick largest file among those with descriptions
-                best_file = max(described_files, key=lambda x: x['size'])
-            else:
-                # No descriptions - just pick largest
-                best_file = max(files, key=lambda x: x['size'])
-
-        # Determine modality
-        modality, suffix = guess_bids_modality(
-            best_file['series_desc'] or "", best_file['nifti'])
-
-        # Build BIDS filename
-        bids_name = f"sub-{subj_id}"
+        new_filename = f"sub-{subj_id}"
         if ses_id:
-            bids_name += f"_ses-{ses_id}"
+            new_filename += f"_ses-{ses_id}"
+        new_filename += f"_{suffix}{ext}"
+        new_path = target_dir / new_filename
 
-        # Handle task naming for functional data
-        if modality == "func":
-            task_match = re.search(
-                r"task-([a-zA-Z0-9]+)", best_file['nifti'].name, re.IGNORECASE)
-            task_name = task_match.group(1) if task_match else "rest"
-            bids_name += f"_task-{task_name}"
+        fpath.rename(new_path)
 
-        # Add suffix and extension
-        ext = ".nii.gz" if best_file['nifti'].suffix == ".gz" else ".nii"
-        bids_name += f"_{suffix}{ext}"
-
-        # Create target directory
-        target_dir = bids_out / f"sub-{subj_id}"
-        if ses_id:
-            target_dir = target_dir / f"ses-{ses_id}"
-        target_dir = target_dir / modality
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        # Move files
-        final_nifti = target_dir / bids_name
-        shutil.move(str(best_file['nifti']), str(final_nifti))
-
-        # Move sidecars if they exist
-        if best_file['json'] and best_file['json'].exists():
-            final_json = final_nifti.with_suffix('.json')
-            shutil.move(str(best_file['json']), str(final_json))
-
-        # Move bval/bvec if they exist (for DWI)
-        for ext in ['bval', 'bvec']:
-            sidecar = best_file['nifti'].with_suffix(f'.{ext}')
-            if sidecar.exists():
-                final_sidecar = final_nifti.with_suffix(f'.{ext}')
-                shutil.move(str(sidecar), str(final_sidecar))
-
-    # 3) Cleanup
-    shutil.rmtree(tmp_folder, ignore_errors=True)
-    st.success("BIDS organization complete!")
-
-
-def guess_bids_modality(series_desc: str, nifti_file: Path):
-    """
-    Decide BIDS data type & suffix from the SeriesDescription or file name.
-    Return (modality_subfolder, bids_suffix).
-    For example: "anat", "T1w" or "func", "bold" or "dwi", "dwi", etc.
-    """
-    desc = series_desc.lower()
-    if "t1" in desc:
-        return ("anat", "T1w")
-    elif "t2" in desc:
-        return ("anat", "T2w")
-    elif "flair" in desc or "fluid" in desc:
-        return ("anat", "FLAIR")
-    elif "dwi" in desc or "dti" in desc:
-        return ("dwi", "dwi")
-    elif "bold" in desc or "fmri" in desc or "func" in desc or "task" in desc:
-        return ("func", "bold")
-    else:
-        # fallback
-        # you might want to log a warning or do more advanced checks
-        # default to anat / T1w if truly unknown
-        st.warning(
-            f"Could not determine modality from {desc}, defaulting to T1w.")
-        return ("anat", "T1w")
-
-
-def validate_dicom_series(dicom_dir: Path):
-    """Quick validation of DICOM consistency"""
-    from pydicom import dcmread
-    series = {}
-    for dcm_file in dicom_dir.rglob('*'):
-        try:
-            ds = dcmread(str(dcm_file), stop_before_pixels=True)
-            key = (ds.SeriesInstanceUID, ds.SeriesNumber)
-            series.setdefault(key, []).append(dcm_file)
-        except:
-            continue
-    return series
+    # Remove the entire temporary folder (its parent)
+    shutil.rmtree(tmp_folder.parent, ignore_errors=True)
+    st.info("Cleaned up leftover files in tmp_dcm2bids.")
 
 
 def create_bids_top_level_files(bids_dir: Path, subject_id: str):
@@ -458,10 +343,7 @@ def main():
                 config_file = generate_dcm2bids_config(temp_dir)
                 run_dcm2bids(dicom_dir, bids_out, subj_id, ses_id, config_file)
 
-                organize_dicom_conversion(bids_out, subj_id, ses_id)
-                # After DICOM extraction
-                dicom_series = validate_dicom_series(dicom_dir)
-                st.info(f"Found {len(dicom_series)} DICOM series")
+                move_files_in_tmp(bids_out, subj_id, ses_id)
                 create_bids_top_level_files(bids_out, subj_id)
 
                 ds_file = bids_out / "dataset_description.json"
@@ -599,15 +481,15 @@ if __name__ == "__main__":
 # Footer: Lab Branding (Custom)
 # ------------------------------
 
-st.markdown(
-    """
-   <div style="text-align: center; margin-top: 50px;">
-       <img src="https://github.com/NkwamPhilip/MLAB/blob/2545d5774dc9b376b6b0180f25388bace232497c/MLAB.png" alt="Lab Logo" style="height: 50px;">
-       <h3>Medical Artificial Intelligence Lab</h3>
-   </div>
-   """,
-    unsafe_allow_html=True
-)
+# st.markdown(
+#    """
+#    <div style="text-align: center; margin-top: 50px;">
+#        <img src="https://github.com/NkwamPhilip/MLAB/blob/2545d5774dc9b376b6b0180f25388bace232497c/MLAB.png" alt="Lab Logo" style="height: 50px;">
+ #       <h3>Medical Artificial Intelligence Lab</h3>
+ #   </div>
+ #   """,
+ #   unsafe_allow_html=True
+# )
 
 
 # Container with collective padding
