@@ -1,3 +1,5 @@
+from pydicom import dcmread
+import re
 import pandas as pd
 from bs4 import BeautifulSoup
 import streamlit as st
@@ -154,151 +156,132 @@ def run_dcm2bids(dicom_dir: Path, bids_out: Path, subj_id: str, ses_id: str, con
         # st.text(result.stdout)
 
 
+# ------------------------------
+# Streamlit Page Configuration & Branding
+# ------------------------------
+st.set_page_config(page_title="MRIQC App", layout="wide")
+
+st.markdown("""
+# MRIQC Web App for MRI Image Quality Assessment
+[Rest of your header content remains exactly the same...]
+""", unsafe_allow_html=True)
+
+# ------------------------------
+# Helper Functions (Updated)
+# ------------------------------
+
+
 def organize_dicom_conversion(bids_out: Path, subj_id: str, ses_id: str):
-    """State-of-the-art DICOM series handling with clinical-grade heuristics"""
+    """Improved DICOM series handling that reliably selects largest files by size"""
     tmp_folder = bids_out / "tmp_dcm2bids"
 
     if not tmp_folder.exists():
         st.warning(f"Temporary conversion folder not found: {tmp_folder}")
         return
 
-    # 1. First collect all files with metadata
-    file_metadata = []
+    # 1. First collect ALL files and their sizes
+    all_files = []
     for fpath in tmp_folder.rglob('*'):
         if fpath.is_file() and fpath.suffix.lower() in ['.nii', '.gz', '.json', '.bval', '.bvec']:
-            try:
-                metadata = {
-                    'path': fpath,
-                    'size': fpath.stat().st_size,
-                    'type': 'unknown'
-                }
+            all_files.append({
+                'path': fpath,
+                'size': fpath.stat().st_size,  # Actual file size in bytes
+                'stem': fpath.stem  # Base filename without extension
+            })
 
-                # Read NIfTI header or JSON sidecar
-                if fpath.suffix.lower() in ['.nii', '.gz']:
-                    img = nib.load(str(fpath))
-                    metadata['dimensions'] = img.header.get_data_shape()
-                    metadata['voxel_size'] = img.header.get_zooms()
-                elif fpath.suffix.lower() == '.json':
-                    with open(fpath, 'r') as f:
-                        sidecar = json.load(f)
-                    metadata.update(sidecar)
+    # 2. Group files by their base filename stem (before extensions)
+    file_groups = {}
+    for file in all_files:
+        file_groups.setdefault(file['stem'], []).append(file)
 
-                file_metadata.append(metadata)
-            except Exception as e:
-                st.warning(
-                    f"Could not read metadata for {fpath.name}: {str(e)}")
-
-    # 2. Classify using multi-level heuristics
-    for meta in file_metadata:
-        # Level 1: Use DICOM-derived JSON metadata if available
-        if 'SeriesDescription' in meta:
-            desc = meta['SeriesDescription'].lower()
-            if 't1' in desc:
-                meta['type'] = 'T1w'
-            elif 't2' in desc:
-                meta['type'] = 'T2w'
-            elif 'flair' in desc:
-                meta['type'] = 'FLAIR'
-            elif any(x in desc for x in ['dwi', 'diffusion']):
-                meta['type'] = 'dwi'
-            elif any(x in desc for x in ['bold', 'fmri', 'func']):
-                meta['type'] = 'bold'
-
-        # Level 2: Fallback to filename patterns
-        if meta['type'] == 'unknown':
-            fname = meta['path'].name.lower()
-            if 't1' in fname:
-                meta['type'] = 'T1w'
-            elif 't2' in fname:
-                meta['type'] = 'T2w'
-            elif any(x in fname for x in ['flair', 'fluid']):
-                meta['type'] = 'FLAIR'
-            elif any(x in fname for x in ['dwi', 'dti']):
-                meta['type'] = 'dwi'
-            elif any(x in fname for x in ['bold', 'fmri']):
-                meta['type'] = 'bold'
-
-        # Level 3: Image characteristics fallback
-        if meta['type'] == 'unknown' and 'dimensions' in meta:
-            dims = meta['dimensions']
-            # Functional typically has 4D (x,y,z,t) with t>1
-            if len(dims) == 4 and dims[3] > 1:
-                meta['type'] = 'bold'
-            # Structural typically 3D with small voxels
-            elif len(dims) == 3 and meta.get('voxel_size', [10])[0] < 2.0:
-                meta['type'] = 'T1w'  # Most common default
-
-    # 3. Group by series (using ProtocolName + SeriesNumber)
-    series_groups = {}
-    for meta in file_metadata:
-        key = (meta.get('ProtocolName', 'unknown'),
-               meta.get('SeriesNumber', 0))
-        series_groups.setdefault(key, []).append(meta)
-
-    # 4. Select best representative for each series
-    bids_files = []
-    for series, files in series_groups.items():
-        # Prefer NIfTI over JSON/BVAL/BVEC
+    # 3. Process each group to find largest NIfTI
+    for stem, files in file_groups.items():
+        # Get all NIfTI files in this group (.nii or .nii.gz)
         niftis = [f for f in files if f['path'].suffix.lower() in [
             '.nii', '.gz']]
+
         if not niftis:
-            continue
+            continue  # Skip groups without NIfTI files
 
-        # Select largest NIfTI by voxel dimensions (not just file size)
-        primary = max(niftis, key=lambda x: np.prod(x.get('dimensions', [1])))
+        # Select the single largest NIfTI file by size
+        largest_nifti = max(niftis, key=lambda x: x['size'])
 
-        # Find associated files
-        associated = [
-            f for f in files
-            if f['path'].stem == primary['path'].stem
-            and f['path'] != primary['path']
-        ]
+        # Get all associated files (same stem but different extensions)
+        associated_files = [
+            f for f in files if f['path'] != largest_nifti['path']]
 
-        bids_files.append({
-            'primary': primary,
-            'associated': associated,
-            'series_type': primary['type']
-        })
-
-    # 5. Organize into BIDS structure
-    for group in bids_files:
-        mod_type = group['series_type']
-        if mod_type in ['T1w', 'T2w', 'FLAIR']:
-            target_mod = 'anat'
-            suffix = mod_type
-        elif mod_type == 'dwi':
-            target_mod = 'dwi'
+        # 4. Determine modality from filename patterns
+        fname = largest_nifti['path'].name.lower()
+        if 't1' in fname:
+            modality = 'anat'
+            suffix = 'T1w'
+        elif 't2' in fname:
+            modality = 'anat'
+            suffix = 'T2w'
+        elif any(x in fname for x in ['flair', 'fluid']):
+            modality = 'anat'
+            suffix = 'FLAIR'
+        elif any(x in fname for x in ['dwi', 'dti']):
+            modality = 'dwi'
             suffix = 'dwi'
-        elif mod_type == 'bold':
-            target_mod = 'func'
+        elif any(x in fname for x in ['bold', 'fmri', 'func', 'task']):
+            modality = 'func'
             suffix = 'bold'
         else:
-            continue
+            # Fallback to checking JSON sidecar if exists
+            json_file = next(
+                (f for f in associated_files if f['path'].suffix.lower() == '.json'), None)
+            if json_file:
+                try:
+                    with open(json_file['path'], 'r') as f:
+                        metadata = json.load(f)
+                    if 'SeriesDescription' in metadata:
+                        desc = metadata['SeriesDescription'].lower()
+                        if 't1' in desc:
+                            modality = 'anat'
+                            suffix = 'T1w'
+                        elif 't2' in desc:
+                            modality = 'anat'
+                            suffix = 'T2w'
+                        elif any(x in desc for x in ['dwi', 'diffusion']):
+                            modality = 'dwi'
+                            suffix = 'dwi'
+                        elif any(x in desc for x in ['bold', 'fmri']):
+                            modality = 'func'
+                            suffix = 'bold'
+                except:
+                    pass
 
-        # Create BIDS filename
+        # 5. Move files to BIDS structure
         bids_name = f"sub-{subj_id}"
         if ses_id:
             bids_name += f"_ses-{ses_id}"
 
-        if target_mod == 'func':
-            task_name = group['primary'].get('TaskName', 'rest')
+        if modality == 'func':
+            task_name = 'rest'  # Default if not found
+            # Try to extract from filename
+            task_match = re.search(r'task-([a-zA-Z0-9]+)', fname)
+            if task_match:
+                task_name = task_match.group(1)
             bids_name += f"_task-{task_name}"
 
-        bids_name += f"_{suffix}{group['primary']['path'].suffix}"
+        bids_name += f"_{suffix}{largest_nifti['path'].suffix}"
 
-        # Move files
+        # Create target directory
         target_dir = bids_out / f"sub-{subj_id}"
         if ses_id:
             target_dir = target_dir / f"ses-{ses_id}"
-        target_dir = target_dir / target_mod
+        target_dir = target_dir / modality
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        # Move primary file
+        # Move main NIfTI file
         new_path = target_dir / bids_name
-        group['primary']['path'].rename(new_path)
+        largest_nifti['path'].rename(new_path)
+        st.info(
+            f"Moved {largest_nifti['path'].name} (Size: {largest_nifti['size']/1024/1024:.1f} MB)")
 
         # Move associated files
-        for assoc in group['associated']:
+        for assoc in associated_files:
             if assoc['path'].suffix.lower() == '.json':
                 assoc_path = new_path.with_suffix('.json')
             elif assoc['path'].suffix.lower() == '.bval':
@@ -309,8 +292,7 @@ def organize_dicom_conversion(bids_out: Path, subj_id: str, ses_id: str):
                 continue
 
             assoc['path'].rename(assoc_path)
-            st.info(
-                f"Moved associated file: {assoc['path'].name} → {assoc_path.relative_to(bids_out)}")
+            st.info(f"└─ Moved associated: {assoc['path'].name}")
 
     # Cleanup
     shutil.rmtree(tmp_folder, ignore_errors=True)
