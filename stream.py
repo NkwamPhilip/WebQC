@@ -179,6 +179,7 @@ def organize_dicom_conversion(bids_out: Path, subj_id: str, ses_id: str):
         return
 
     # 1. First collect ALL files and their sizes
+
     all_files = []
     for fpath in tmp_folder.rglob('*'):
         if fpath.is_file() and fpath.suffix.lower() in ['.nii', '.gz', '.json', '.bval', '.bvec']:
@@ -198,11 +199,8 @@ def organize_dicom_conversion(bids_out: Path, subj_id: str, ses_id: str):
         # Get all NIfTI files in this group (.nii or .nii.gz)
         niftis = [f for f in files if f['path'].suffix.lower() in [
             '.nii', '.gz']]
-
         if not niftis:
             continue  # Skip groups without NIfTI files
-
-        # Select the single largest NIfTI file by size
         largest_nifti = max(niftis, key=lambda x: x['size'])
 
         # Get all associated files (same stem but different extensions)
