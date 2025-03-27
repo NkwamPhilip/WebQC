@@ -159,7 +159,6 @@ def run_dcm2bids(dicom_dir: Path, bids_out: Path, subj_id: str, ses_id: str, con
 # ------------------------------
 # Streamlit Page Configuration & Branding
 # ------------------------------
-st.set_page_config(page_title="MRIQC App", layout="wide")
 
 st.markdown("""
 # MRIQC Web App for MRI Image Quality Assessment
@@ -583,15 +582,15 @@ if __name__ == "__main__":
 # Footer: Lab Branding (Custom)
 # ------------------------------
 
-# st.markdown(
-#    """
-#    <div style="text-align: center; margin-top: 50px;">
-#        <img src="https://github.com/NkwamPhilip/MLAB/blob/2545d5774dc9b376b6b0180f25388bace232497c/MLAB.png" alt="Lab Logo" style="height: 50px;">
- #       <h3>Medical Artificial Intelligence Lab</h3>
- #   </div>
- #   """,
- #   unsafe_allow_html=True
-# )
+st.markdown(
+    """
+   <div style="text-align: center; margin-top: 50px;">
+       <img src="https://github.com/NkwamPhilip/MLAB/blob/2545d5774dc9b376b6b0180f25388bace232497c/MLAB.png" alt="Lab Logo" style="height: 50px;">
+       <h3>Medical Artificial Intelligence Lab</h3>
+   </div>
+   """,
+    unsafe_allow_html=True
+)
 
 
 # Container with collective padding
