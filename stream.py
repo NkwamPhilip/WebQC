@@ -152,66 +152,135 @@ def run_dcm2bids(dicom_dir: Path, bids_out: Path, subj_id: str, ses_id: str, con
 
 
 def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
-    tmp_folder = bids_out / "tmp_dcm2bids" / f"sub-{subj_id}_ses-{ses_id}"
+    tmp_folder = bids_out / "tmp_dcm2bids" / f"sub-{subj_id}"
+    if ses_id:
+        tmp_folder = tmp_folder / f"ses-{ses_id}"
+
     if not tmp_folder.exists():
+        st.warning(f"Temporary folder not found: {tmp_folder}")
         return
+
     sub_dir = bids_out / f"sub-{subj_id}"
     ses_dir = sub_dir / f"ses-{ses_id}" if ses_id else sub_dir
     ses_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create all possible modality directories
     modality_paths = {
         "anat": ses_dir / "anat",
         "dwi": ses_dir / "dwi",
-        "func": ses_dir / "func"
+        "func": ses_dir / "func",
+        "fmap": ses_dir / "fmap"  # Added for field maps
     }
+    for path in modality_paths.values():
+        path.mkdir(exist_ok=True)
+
+    # Walk through all files in tmp folder
     for fpath in tmp_folder.rglob("*"):
         if not fpath.is_file():
             continue
-        exts = "".join(fpath.suffixes)
-        if not any(exts.endswith(e) for e in [".nii", ".nii.gz", ".json", ".bval", ".bvec"]):
+
+        # Skip non-image/non-json files
+        if not any(fpath.name.lower().endswith(ext) for ext in [".nii", ".nii.gz", ".json", ".bval", ".bvec"]):
             continue
+
+        # Determine modality and suffix based on BIDS filename patterns
         fname = fpath.name.lower()
-        if "t1" in fname:
+        modality_label = None
+        suffix = None
+
+        # Check for anatomical images
+        if "t1" in fname or "_t1" in fname:
             modality_label = "anat"
             suffix = "T1w"
-        elif "t2" in fname:
+        elif "t2" in fname or "_t2" in fname:
             modality_label = "anat"
             suffix = "T2w"
-        elif "flair" in fname:
+        elif "flair" in fname or "fluid" in fname:
             modality_label = "anat"
             suffix = "FLAIR"
-        elif "fluid" in fname:
-            modality_label = "anat"
-            suffix = "FLAIR"
+        # Check for diffusion images
         elif "dwi" in fname or "dti" in fname:
             modality_label = "dwi"
             suffix = "dwi"
-        elif "bold" in fname or "fmri" in fname or "FMRI" in fname or "run" in fname or "fMRI" in fname or "new" in fname:
+        # Check for functional images
+        elif any(x in fname for x in ["bold", "fmri", "func", "task"]):
             modality_label = "func"
             suffix = "bold"
+        # Check for field maps
+        elif any(x in fname for x in ["phasediff", "magnitude", "fieldmap"]):
+            modality_label = "fmap"
+            suffix = "phasediff" if "phasediff" in fname else "magnitude"
         else:
+            # Fallback: try to determine from file extensions
+            if fname.endswith(".bval") or fname.endswith(".bvec"):
+                modality_label = "dwi"
+                suffix = "dwi"
+            elif fname.endswith(".json"):
+                # Try to read JSON sidecar to determine type
+                try:
+                    with open(fpath, 'r') as f:
+                        sidecar = json.load(f)
+                    if "Modality" in sidecar:
+                        if sidecar["Modality"].lower() == "mr":
+                            if "ImageType" in sidecar:
+                                if "DIFFUSION" in sidecar["ImageType"]:
+                                    modality_label = "dwi"
+                                    suffix = "dwi"
+                                elif "BOLD" in sidecar["ImageType"]:
+                                    modality_label = "func"
+                                    suffix = "bold"
+                                else:
+                                    modality_label = "anat"
+                                    suffix = "T1w"  # default fallback
+                except:
+                    pass
+
+        if not modality_label:
+            st.warning(f"Could not determine modality for file: {fpath.name}")
             continue
 
-        target_dir = modality_paths[modality_label]
-        if not target_dir.exists():
-            target_dir.mkdir(parents=True, exist_ok=True)
-
-        # Determine the correct extension: if the file ends with ".nii.gz", use that.
-        if fpath.name.lower().endswith(".nii.gz"):
-            ext = ".nii.gz"
-        else:
-            ext = fpath.suffix
-
+        # Construct new filename according to BIDS specification
         new_filename = f"sub-{subj_id}"
         if ses_id:
             new_filename += f"_ses-{ses_id}"
-        new_filename += f"_{suffix}{ext}"
+
+        # Add modality-specific components
+        if modality_label == "func":
+            # Try to extract task name (if present in original filename)
+            task_match = re.search(r'task-([a-zA-Z0-9]+)', fname)
+            task_name = task_match.group(1) if task_match else "rest"
+            new_filename += f"_task-{task_name}"
+
+        new_filename += f"_{suffix}{fpath.suffix.lower()}"
+
+        # Handle special cases
+        if fpath.name.endswith(".bval"):
+            new_filename = new_filename.replace(
+                ".nii.gz", "").replace(".nii", "")
+        elif fpath.name.endswith(".bvec"):
+            new_filename = new_filename.replace(
+                ".nii.gz", "").replace(".nii", "")
+        elif fpath.name.endswith(".json"):
+            new_filename = new_filename.replace(
+                ".nii.gz", ".json").replace(".nii", ".json")
+
+        target_dir = modality_paths[modality_label]
         new_path = target_dir / new_filename
 
-        fpath.rename(new_path)
+        # Ensure we don't overwrite existing files
+        counter = 1
+        while new_path.exists():
+            new_filename = f"{new_filename.split('.')[0]}_{counter}.{new_filename.split('.')[-1]}"
+            new_path = target_dir / new_filename
+            counter += 1
 
-    # Remove the entire temporary folder (its parent)
+        # Move/rename the file
+        fpath.rename(new_path)
+        st.info(f"Moved {fpath.name} → {new_path.relative_to(bids_out)}")
+
+    # Clean up temporary folder
     shutil.rmtree(tmp_folder.parent, ignore_errors=True)
-    st.info("Cleaned up leftover files in tmp_dcm2bids.")
+    st.success("Successfully organized all files into BIDS structure")
 
 
 def create_bids_top_level_files(bids_dir: Path, subject_id: str):
