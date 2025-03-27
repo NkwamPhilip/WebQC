@@ -16,10 +16,10 @@ import datetime
 # ------------------------------
 st.set_page_config(page_title="MRIQC App", layout="wide")
 
-st.markdown(""" 
+st.markdown("""
 # MRIQC Web App for MRI Image Quality Assessment
 
-The WebQC App provides an intuitive web interface for running Quality Control on MRI datasets acquired in DICOM formats. The App offers users the ability to compute Image Quality Metrics (IQMs) for neuroimaging studies. 
+The WebQC App provides an intuitive web interface for running Quality Control on MRI datasets acquired in DICOM formats. The App offers users the ability to compute Image Quality Metrics (IQMs) for neuroimaging studies.
 This web-based solution implements the original MRIQC standalone application in a user-friendly interface accessible from any device, without the need for software installation or access to resource-intensive computers. Thus, simplifying the quality control workflow. For a comprehensive understanding of the IQMs computed by MRIQC, as well as details on the original MRIQC implementation, refer to the official MRIQC documentation: https://mriqc.readthedocs.io.
 """,
             unsafe_allow_html=True
@@ -29,24 +29,24 @@ st.markdown(
     """
 ## How to Use:
 The app enables users to upload T1w, T2w, or BOLD fMRI DICOM files as a folder or zipped format, convert them to the Standard Brain Imaging Data Structure (BIDS) format using dcm2bids [1] via dcm2niiX [2], and then process the IQMs using MRIQC [3]. The resulting reports can be downloaded for further analysis. To use, follow the following steps:
-            
+
 1. Enter Subject ID (optional)
 2. Enter the Session ID (optional, e.g, baseline, follow up, etc)
 3. Select your preferred modality for analysis (T1w, T2w, DWI, or BOLD fMRI)
 4. Upload a zipped file/folder containing T1w, T2w, DWI, or BOLD fMRI DICOM images by dragging and dropping the zipped file or uploading using the browse file option
 5. Click DICOM → BIDS Conversion
 6. Once BIDS converted, you will see the notification: DICOM to BIDS conversion complete
-7. Click Send BIDS to Web for MRIQC or if you want the BIDS format, Click Download BIDS Dataset to your device. 
+7. Click Send BIDS to Web for MRIQC or if you want the BIDS format, Click Download BIDS Dataset to your device.
 8. Send the converted BIDS images to MRIQC by clicking Send BIDS to Web for MRIQC  for generating the IQMs
 9. Depending on your internet connection, this can between 5-10 minutes to get your results for a single participant.
 10. When completed, you can view the report on the web App or download the report of the IQM by clicking the “Download MRIQC results” button including the csv export.
-           
-            
+
+
 
 
 ## References
 1. Boré, A., Guay, S., Bedetti, C., Meisler, S., & GuenTher, N. (2023). Dcm2Bids (Version 3.1.1) [Computer software]. https://doi.org/10.5281/zenodo.8436509
-2. Li X, Morgan PS, Ashburner J, Smith J, Rorden C. The first step for neuroimaging data analysis: DICOM to NIfTI conversion. J Neurosci Methods., 2016, 264:47-56.                                                                
+2. Li X, Morgan PS, Ashburner J, Smith J, Rorden C. The first step for neuroimaging data analysis: DICOM to NIfTI conversion. J Neurosci Methods., 2016, 264:47-56.
 3. Esteban O, Birman D, Schaer M, Koyejo OO, Poldrack RA, Gorgolewski KJ (2017) MRIQC: Advancing the automatic prediction of image quality in MRI from unseen sites. PLoS ONE 12(9): e0184661. https://doi.org/10.1371/journal.pone.0184661
 
 """, unsafe_allow_html=True)
@@ -126,7 +126,7 @@ def generate_dcm2bids_config(temp_dir: Path) -> Path:
             {
                 "dataType": "func",
                 "modalityLabel": "bold",
-                "criteria": {"SeriesDescription": "(?i).*bold.*|.*fmri.*"},
+                "criteria": {"SeriesDescription": "(?i).*bold.*|.*fmri.*|.*FMRI.*|.*run.*"},
                 "sidecarChanges": {"ProtocolName": "BOLD"}
             }
         ]
@@ -185,7 +185,7 @@ def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
         elif "dwi" in fname or "dti" in fname:
             modality_label = "dwi"
             suffix = "dwi"
-        elif "bold" in fname or "fmri" in fname:
+        elif "bold" in fname or "fmri" in fname or "FMRI" in fname or "run" in fname:
             modality_label = "func"
             suffix = "bold"
         else:
