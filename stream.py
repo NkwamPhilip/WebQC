@@ -126,7 +126,7 @@ def generate_dcm2bids_config(temp_dir: Path) -> Path:
             {
                 "dataType": "func",
                 "modalityLabel": "bold",
-                "criteria": {"SeriesDescription": "(?i).*bold.*|.*fmri.*|.*FMRI.*|.*run.*"},
+                "criteria": {"SeriesDescription": "(?i).*bold.*|.*fmri.*|.*FMRI.*|.*run.*|.*fMRI.*"},
                 "sidecarChanges": {"ProtocolName": "BOLD"}
             }
         ]
@@ -185,7 +185,7 @@ def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
         elif "dwi" in fname or "dti" in fname:
             modality_label = "dwi"
             suffix = "dwi"
-        elif "bold" in fname or "fmri" in fname or "FMRI" in fname or "run" in fname:
+        elif "bold" in fname or "fmri" in fname or "FMRI" in fname or "run" in fname or "fMRI" in fname:
             modality_label = "func"
             suffix = "bold"
         else:
