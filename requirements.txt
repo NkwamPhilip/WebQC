@@ -1,6 +1,5 @@
 # Streamlit for the front-end app
-streamlit>=1.14
-dcm2niix
+streamlit==1.21.0
 # FastAPI for the backend API
 fastapi>=0.70
 
