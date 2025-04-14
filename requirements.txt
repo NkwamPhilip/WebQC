@@ -10,7 +10,7 @@ uvicorn[standard]>=0.17
 requests>=2.25
 beautifulsoup4
 pandas
-numpy
+numpy==1.24.3
 nibabel
 pydicom
 # dcm2bids installed from GitHub (adjust the version/tag as needed)
