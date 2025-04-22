@@ -370,37 +370,39 @@ def main():
 
         # Phase 2: Send BIDS to AWS for MRIQC Processing
         if st.button("Send BIDS to Web for MRIQC"):
-            if "temp_dir" not in st.session_state:
-                st.error("No BIDS dataset found. Please run the conversion first.")
-                return
+    if "temp_dir" not in st.session_state:
+        st.error("No BIDS dataset found. Please run the conversion first.")
+        return
 
-            with st.spinner("Running MRIQC on web server..."):
-                # Prepare the request
-                files = {
-                    'bids_zip': (
-                        'bids_dataset.zip', 
-                        open(st.session_state.bids_zip_path, 'rb'),
-                        'application/zip'
-                    )
-                }
-                data = {
-                    'participant_label': subj_id,
-                    'modalities': modalities_str,
-                    'n_procs': str(n_procs),
-                    'mem_gb': str(mem_gb)
-                }
-
+    with st.spinner("Running MRIQC on web server..."):
+        try:
+            # Prepare the multipart form data
+            with open(st.session_state.bids_zip_path, 'rb') as f:
+                files = {'bids_zip': ('bids_dataset.zip', f, 'application/zip')}
+                
+                # Convert modalities to list if needed
+                modalities_list = selected_modalities  # Already a list from multiselect
+                
+                response = requests.post(
+                    f"{aws_api_url}/run-mriqc",
+                    files=files,
+                    data={
+                        'participant_label': subj_id,
+                        'modalities': ' '.join(modalities_list),  # Join with space
+                        'n_procs': str(n_procs),
+                        'mem_gb': str(mem_gb)
+                    },
+                    timeout=60  # Add timeout
+                )
+                
+            # Better error response handling
+            if response.status_code != 200:
                 try:
-                    response = requests.post(
-                        f"{aws_api_url}/run-mriqc",
-                        files=files,
-                        data=data
-                    )
-                    
-                    if response.status_code != 200:
-                        st.error(f"MRIQC failed: {response.text}")
-                        return
-
+                    error_detail = response.json().get('detail', response.text)
+                except:
+                    error_detail = response.text
+                st.error(f"MRIQC failed (Status {response.status_code}): {error_detail}")
+                return
                     # Save results
                     temp_dir = Path(st.session_state.temp_dir)
                     result_zip = temp_dir / "mriqc_results.zip"
