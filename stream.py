@@ -28,12 +28,12 @@ This web-based solution implements the original MRIQC standalone application in 
 st.markdown(
     """
 ## How to Use:
-The app enables users to upload T1w, T2w, or BOLD fMRI DICOM files as a folder or zipped format, convert them to the Standard Brain Imaging Data Structure (BIDS) format using dcm2bids [1] via dcm2niiX [2], and then process the IQMs using MRIQC [3]. The resulting reports can be downloaded for further analysis. To use, follow the following steps:
+The app enables users to upload T1w, T2w, DWI, BOLD fMRI, or ASL DICOM files as a folder or zipped format, convert them to the Standard Brain Imaging Data Structure (BIDS) format using dcm2bids [1] via dcm2niiX [2], and then process the IQMs using MRIQC [3]. The resulting reports can be downloaded for further analysis. To use, follow the following steps:
 
 1. Enter Subject ID (optional)
 2. Enter the Session ID (optional, e.g, baseline, follow up, etc)
-3. Select your preferred modality for analysis (T1w, T2w, DWI, or BOLD fMRI)
-4. Upload a zipped file/folder containing T1w, T2w, DWI, or BOLD fMRI DICOM images by dragging and dropping the zipped file or uploading using the browse file option
+3. Select your preferred modality for analysis (T1w, T2w, DWI, BOLD fMRI, or ASL)
+4. Upload a zipped file/folder containing T1w, T2w, DWI, BOLD fMRI, or ASL DICOM images by dragging and dropping the zipped file or uploading using the browse file option
 5. Click DICOM → BIDS Conversion
 6. Once BIDS converted, you will see the notification: DICOM to BIDS conversion complete
 7. Click Send BIDS to Web for MRIQC or if you want the BIDS format, Click Download BIDS Dataset to your device.
@@ -43,14 +43,12 @@ The app enables users to upload T1w, T2w, or BOLD fMRI DICOM files as a folder o
 
 
 
-
 ## References
 1. Boré, A., Guay, S., Bedetti, C., Meisler, S., & GuenTher, N. (2023). Dcm2Bids (Version 3.1.1) [Computer software]. https://doi.org/10.5281/zenodo.8436509
 2. Li X, Morgan PS, Ashburner J, Smith J, Rorden C. The first step for neuroimaging data analysis: DICOM to NIfTI conversion. J Neurosci Methods., 2016, 264:47-56.
 3. Esteban O, Birman D, Schaer M, Koyejo OO, Poldrack RA, Gorgolewski KJ (2017) MRIQC: Advancing the automatic prediction of image quality in MRI from unseen sites. PLoS ONE 12(9): e0184661. https://doi.org/10.1371/journal.pone.0184661
 
 """, unsafe_allow_html=True)
-
 
 # Display IQM tables in Markdown
 st.markdown("""
@@ -100,34 +98,40 @@ def generate_dcm2bids_config(temp_dir: Path) -> Path:
     config = {
         "descriptions": [
             {
-                "dataType": "anat",
-                "modalityLabel": "T1w",
-                "criteria": {"SeriesDescription": "(?i).*t1.*"},
-                "sidecarChanges": {"ProtocolName": "T1w"}
+                "datatype": "anat",
+                "suffix": "T1w",
+                "criteria": {"SeriesDescription": "*T1*"},
+                "sidecar_changes": {"ProtocolName": "T1w"}
             },
             {
-                "dataType": "anat",
-                "modalityLabel": "T2w",
-                "criteria": {"SeriesDescription": "(?i).*t2.*"},
-                "sidecarChanges": {"ProtocolName": "T2w"}
+                "datatype": "anat",
+                "suffix": "T2w",
+                "criteria": {"SeriesDescription": "*T2*"},
+                "sidecar_changes": {"ProtocolName": "T2w"}
             },
             {
-                "dataType": "anat",
-                "modalityLabel": "FLAIR",
-                "criteria": {"SeriesDescription": "(?i).*flair.*|.*fluid.*"},
-                "sidecarChanges": {"ProtocolName": "FLAIR"}
+                "datatype": "anat",
+                "suffix": "FLAIR",
+                "criteria": {"SeriesDescription": "*FLAIR*|*fluid*"},
+                "sidecar_changes": {"ProtocolName": "FLAIR"}
             },
             {
-                "dataType": "dwi",
-                "modalityLabel": "dwi",
-                "criteria": {"SeriesDescription": "(?i).*dwi.*|.*dti.*"},
-                "sidecarChanges": {"ProtocolName": "DWI"}
+                "datatype": "dwi",
+                "suffix": "dwi",
+                "criteria": {"SeriesDescription": "*DWI*|*DTI*"},
+                "sidecar_changes": {"ProtocolName": "DWI"}
             },
             {
-                "dataType": "func",
-                "modalityLabel": "bold",
-                "criteria": {"SeriesDescription": "(?i).*bold.*|.*fmri.*|.*FMRI.*|.*BRAIN.*|.*magnitude.*"},
-                "sidecarChanges": {"ProtocolName": "BOLD"}
+                "datatype": "func",
+                "suffix": "bold",
+                "criteria": {"SeriesDescription": "*BOLD*|*fMRI*|*magnitude*"},
+                "sidecar_changes": {"ProtocolName": "BOLD"}
+            },
+            {
+                "datatype": "perf",
+                "suffix": "asl",
+                "criteria": {"SeriesDescription": "*ASL*|*Perfusion*"},
+                "sidecar_changes": {"ProtocolName": "ASL"}
             }
         ]
     }
@@ -148,7 +152,6 @@ def run_dcm2bids(dicom_dir: Path, bids_out: Path, subj_id: str, ses_id: str, con
         st.error(f"dcm2bids error:\n{result.stderr}")
     else:
         st.success("dcm2bids completed successfully.")
-        # st.text(result.stdout)
 
 
 def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
@@ -160,8 +163,9 @@ def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
     ses_dir.mkdir(parents=True, exist_ok=True)
     modality_paths = {
         "anat": ses_dir / "anat",
-        "dwi": ses_dir / "dwi",
-        "func": ses_dir / "func"
+        "dwi":  ses_dir / "dwi",
+        "func": ses_dir / "func",
+        "perf": ses_dir / "perf"
     }
     for fpath in tmp_folder.rglob("*"):
         if not fpath.is_file():
@@ -169,25 +173,31 @@ def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
         exts = "".join(fpath.suffixes)
         if not any(exts.endswith(e) for e in [".nii", ".nii.gz", ".json", ".bval", ".bvec"]):
             continue
-        fname = fpath.name.lower()
-        if "t1" in fname:
-            modality_label = "anat"
-            suffix = "T1w"
-        elif "t2" in fname:
-            modality_label = "anat"
-            suffix = "T2w"
-        elif "flair" in fname:
-            modality_label = "anat"
-            suffix = "FLAIR"
-        elif "fluid" in fname:
-            modality_label = "anat"
-            suffix = "FLAIR"
-        elif "dwi" in fname or "dti" in fname:
-            modality_label = "dwi"
-            suffix = "dwi"
-        elif "bold" in fname or "fmri" in fname or "FMRI" in fname or "BRAIN" in fname or "magnitude" in fname:
-            modality_label = "func"
-            suffix = "bold"
+        # try to read metadata from JSON sidecar
+        series_desc = ""
+        sidecar = fpath.with_suffix(
+            '.json') if '.nii' in fpath.suffixes else None
+        if sidecar and sidecar.exists():
+            try:
+                meta = json.load(open(sidecar, 'r'))
+                series_desc = meta.get(
+                    "SeriesDescription", "") or meta.get("ProtocolName", "")
+            except Exception:
+                series_desc = ""
+        key = series_desc.lower() if series_desc else fpath.name.lower()
+
+        if "t1" in key:
+            modality_label, suffix = "anat", "T1w"
+        elif "t2" in key:
+            modality_label, suffix = "anat", "T2w"
+        elif "flair" in key or "fluid" in key:
+            modality_label, suffix = "anat", "FLAIR"
+        elif "dwi" in key or "dti" in key:
+            modality_label, suffix = "dwi", "dwi"
+        elif "bold" in key or "fmri" in key or "magnitude" in key:
+            modality_label, suffix = "func", "bold"
+        elif "asl" in key or "perfusion" in key:
+            modality_label, suffix = "perf", "asl"
         else:
             continue
 
@@ -195,7 +205,7 @@ def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
         if not target_dir.exists():
             target_dir.mkdir(parents=True, exist_ok=True)
 
-        # Determine the correct extension: if the file ends with ".nii.gz", use that.
+        # Determine extension
         if fpath.name.lower().endswith(".nii.gz"):
             ext = ".nii.gz"
         else:
@@ -209,7 +219,7 @@ def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
 
         fpath.rename(new_path)
 
-    # Remove the entire temporary folder (its parent)
+    # Clean up temp
     shutil.rmtree(tmp_folder.parent, ignore_errors=True)
     st.info("Cleaned up leftover files in tmp_dcm2bids.")
 
@@ -237,6 +247,7 @@ This dataset was automatically generated by dcm2bids.
 - Anat: T1w, T2w, FLAIR
 - DWI: Diffusion Weighted Imaging
 - Func: BOLD/fMRI scans
+- Perf: ASL perfusion scans
 
 Please see the official [BIDS documentation](https://bids.neuroimaging.io) for details.
 """
@@ -299,7 +310,6 @@ def extract_all_iqms(result_dir: Path):
         iqm_list.append(iqms)
     return pd.DataFrame(iqm_list)
 
-
 # ------------------------------
 # Main Streamlit App
 # ------------------------------
@@ -313,7 +323,7 @@ def main():
 
     selected_modalities = st.multiselect(
         "Select MRIQC modalities:",
-        ["T1w", "T2w", "bold", "flair", "dwi"],
+        ["T1w", "T2w", "bold", "flair", "dwi", "asl"],
         default=["T1w"]
     )
     modalities_str = " ".join(selected_modalities)
