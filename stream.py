@@ -39,15 +39,12 @@ The app enables users to upload T1w, T2w, DWI, BOLD fMRI, or ASL DICOM files as 
 7. Click Send BIDS to Web for MRIQC or if you want the BIDS format, Click Download BIDS Dataset to your device.
 8. Send the converted BIDS images to MRIQC by clicking Send BIDS to Web for MRIQC  for generating the IQMs
 9. Depending on your internet connection, this can between 5-10 minutes to get your results for a single participant.
-10. When completed, you can view the report on the web App or download the report of the IQM by clicking the “Download MRIQC results” button including the csv export.
-
-
+10. When completed, you can view the report on the web App or download the report of the IQM by clicking the "Download MRIQC results" button including the csv export.
 
 ## References
 1. Boré, A., Guay, S., Bedetti, C., Meisler, S., & GuenTher, N. (2023). Dcm2Bids (Version 3.1.1) [Computer software]. https://doi.org/10.5281/zenodo.8436509
 2. Li X, Morgan PS, Ashburner J, Smith J, Rorden C. The first step for neuroimaging data analysis: DICOM to NIfTI conversion. J Neurosci Methods., 2016, 264:47-56.
 3. Esteban O, Birman D, Schaer M, Koyejo OO, Poldrack RA, Gorgolewski KJ (2017) MRIQC: Advancing the automatic prediction of image quality in MRI from unseen sites. PLoS ONE 12(9): e0184661. https://doi.org/10.1371/journal.pone.0184661
-
 """, unsafe_allow_html=True)
 
 # Display IQM tables in Markdown
@@ -80,19 +77,9 @@ st.markdown("""
 *For deeper technical explanations, see the [MRIQC Documentation](https://mriqc.readthedocs.io/en/latest/iqms/iqms.html).*
 """)
 
-# ... continue your Streamlit code (other steps, logic, etc.) ...
-
-
-# ------------------------------
-# Default AWS Server Settings (Hidden)
-# ------------------------------
-aws_api_url = "http://51.21.190.32:8000"
-ws_url = "ws://51.21.190.32:8000/ws/mriqc"
-
 # ------------------------------
 # Helper Functions
 # ------------------------------
-
 
 def generate_dcm2bids_config(temp_dir: Path) -> Path:
     config = {
@@ -140,7 +127,6 @@ def generate_dcm2bids_config(temp_dir: Path) -> Path:
         json.dump(config, f, indent=4)
     return config_file
 
-
 def run_dcm2bids(dicom_dir: Path, bids_out: Path, subj_id: str, ses_id: str, config_file: Path):
     cmd = ["dcm2bids", "-d", str(dicom_dir), "-p", subj_id,
            "-c", str(config_file), "-o", str(bids_out)]
@@ -152,7 +138,6 @@ def run_dcm2bids(dicom_dir: Path, bids_out: Path, subj_id: str, ses_id: str, con
         st.error(f"dcm2bids error:\n{result.stderr}")
     else:
         st.success("dcm2bids completed successfully.")
-
 
 def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
     tmp_folder = bids_out / "tmp_dcm2bids" / f"sub-{subj_id}_ses-{ses_id}"
@@ -175,13 +160,11 @@ def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
             continue
         # try to read metadata from JSON sidecar
         series_desc = ""
-        sidecar = fpath.with_suffix(
-            '.json') if '.nii' in fpath.suffixes else None
+        sidecar = fpath.with_suffix('.json') if '.nii' in fpath.suffixes else None
         if sidecar and sidecar.exists():
             try:
                 meta = json.load(open(sidecar, 'r'))
-                series_desc = meta.get(
-                    "SeriesDescription", "") or meta.get("ProtocolName", "")
+                series_desc = meta.get("SeriesDescription", "") or meta.get("ProtocolName", "")
             except Exception:
                 series_desc = ""
         key = series_desc.lower() if series_desc else fpath.name.lower()
@@ -222,7 +205,6 @@ def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
     # Clean up temp
     shutil.rmtree(tmp_folder.parent, ignore_errors=True)
     st.info("Cleaned up leftover files in tmp_dcm2bids.")
-
 
 def create_bids_top_level_files(bids_dir: Path, subject_id: str):
     dd_file = bids_dir / "dataset_description.json"
@@ -273,15 +255,8 @@ Please see the official [BIDS documentation](https://bids.neuroimaging.io) for d
         with open(participants_json, 'w') as f:
             json.dump(pjson, f, indent=4)
 
-
 def zip_directory(folder_path: Path, zip_file_path: Path):
-    shutil.make_archive(str(zip_file_path.with_suffix("")),
-                        "zip", root_dir=folder_path)
-
-# ------------------------------
-# Web Scraper
-# ------------------------------
-
+    shutil.make_archive(str(zip_file_path.with_suffix("")), 'zip', root_dir=folder_path)
 
 def extract_iqms_from_html(html_file: Path):
     iqms = {}
@@ -300,7 +275,6 @@ def extract_iqms_from_html(html_file: Path):
 
     return iqms
 
-
 def extract_all_iqms(result_dir: Path):
     iqm_list = []
     html_reports = list(result_dir.rglob("*.html"))
@@ -313,7 +287,6 @@ def extract_all_iqms(result_dir: Path):
 # ------------------------------
 # Main Streamlit App
 # ------------------------------
-
 
 def main():
     st.title("DICOM → BIDS → MRIQC")
@@ -328,8 +301,25 @@ def main():
     )
     modalities_str = " ".join(selected_modalities)
 
-    aws_api_url = "http://51.21.190.32:8000"
-    ws_url = "ws://51.21.190.32:8000/ws/mriqc"
+    # Resource allocation settings
+    col1, col2 = st.columns(2)
+    with col1:
+        n_procs = st.selectbox(
+            "CPU Cores to Use",
+            options=[4, 8, 12, 16],
+            index=2,  # Default to 12
+            help="More cores = faster processing but higher resource usage"
+        )
+    with col2:
+        mem_gb = st.selectbox(
+            "Memory Allocation (GB)",
+            options=[16, 32, 48, 64],
+            index=2,  # Default to 48
+            help="More memory allows processing larger datasets"
+        )
+
+    aws_api_url = "http://54.162.130.95:8000"
+    ws_url = "ws://54.162.130.95:8000/ws/mriqc"
 
     dicom_zip = st.file_uploader("Upload DICOM ZIP", type=["zip"])
 
@@ -358,8 +348,7 @@ def main():
 
                 ds_file = bids_out / "dataset_description.json"
                 if ds_file.exists():
-                    st.success(
-                        "dataset_description.json created successfully.")
+                    st.success("dataset_description.json created successfully.")
                 else:
                     st.error("dataset_description.json not found at BIDS root!")
 
@@ -369,138 +358,120 @@ def main():
                 st.info(f"BIDS dataset is ready: {bids_zip_path}")
 
                 with open(bids_zip_path, "rb") as f:
-                    st.download_button("Download BIDS Dataset", data=f,
-                                       file_name="BIDS_dataset.zip", mime="application/zip")
+                    st.download_button(
+                        "Download BIDS Dataset", 
+                        data=f,
+                        file_name="BIDS_dataset.zip", 
+                        mime="application/zip"
+                    )
 
                 st.session_state.temp_dir = str(temp_dir)
+                st.session_state.bids_zip_path = str(bids_zip_path)
 
         # Phase 2: Send BIDS to AWS for MRIQC Processing
         if st.button("Send BIDS to Web for MRIQC"):
             if "temp_dir" not in st.session_state:
                 st.error("No BIDS dataset found. Please run the conversion first.")
                 return
-            else:
-                temp_dir = Path(st.session_state.temp_dir)
 
-            bids_zip_path = temp_dir / "bids_dataset.zip"
-            files = {
-                "bids_zip": ("bids_dataset.zip", open(bids_zip_path, "rb"), "application/zip")
-            }
-            data = {
-                "participant_label": subj_id,
-                "modalities": modalities_str
-            }
-            api_endpoint = f"{aws_api_url}/run-mriqc"
-            st.write(f"Sending BIDS + modalities={modalities_str} to web ...")
-
-            response = requests.post(api_endpoint, files=files, data=data)
-            if response.status_code != 200:
-                st.error(f"MRIQC failed: {response.text}")
-                return
-
-            # Save the MRIQC results ZIP file received from server
-            result_zip = temp_dir / "mriqc_results.zip"
-            with open(result_zip, "wb") as f:
-                f.write(response.content)
-            st.success("MRIQC results received from server!")
-
-            # Extract the MRIQC results
-            result_dir = temp_dir / "mriqc_results"
-            result_dir.mkdir(exist_ok=True)
-            with zipfile.ZipFile(result_zip, 'r') as zf:
-                zf.extractall(result_dir)
-
-            # --- Automatically Extract IQMs from HTML Reports ---
-            def extract_iqms_from_html(html_file: Path):
-                iqms = {}
-                with open(html_file, 'r', encoding='utf-8') as file:
-                    soup = BeautifulSoup(file, 'html.parser')
-
-                iqm_table = soup.find("table", {"id": "iqms-table"})
-                if iqm_table:
-                    rows = iqm_table.find_all("tr")
-                    for row in rows:
-                        cols = row.find_all("td")
-                        if len(cols) == 2:
-                            metric_name = cols[0].text.strip()
-                            metric_value = cols[1].text.strip()
-                            iqms[metric_name] = metric_value
-                return iqms
-
-            iqm_records = []
-            html_reports = list(result_dir.rglob("*.html"))
-
-            if html_reports:
-                for html_file in html_reports:
-                    iqms = extract_iqms_from_html(html_file)
-                    iqms['Report Filename'] = html_file.name
-                    iqm_records.append(iqms)
-
-                iqms_df = pd.DataFrame(iqm_records)
-
-                # Save IQMs CSV directly into results directory
-                iqm_csv_path = result_dir / "MRIQC_IQMs.csv"
-                iqms_df.to_csv(iqm_csv_path, index=False)
-                st.success("IQMs extracted successfully from HTML reports!")
-
-                # Re-zip results folder including IQMs CSV
-                updated_zip_path = temp_dir / "mriqc_results_with_IQMs"
-                shutil.make_archive(str(updated_zip_path),
-                                    'zip', root_dir=result_dir)
-
-                # Single download button for complete package
-                with open(f"{updated_zip_path}.zip", "rb") as f:
-                    st.download_button(
-                        "Download MRIQC Results (including IQMs CSV)",
-                        data=f,
-                        file_name="mriqc_results_with_IQMs.zip",
-                        mime="application/zip"
+            with st.spinner("Running MRIQC on web server..."):
+                # Prepare the request
+                files = {
+                    'bids_zip': (
+                        'bids_dataset.zip', 
+                        open(st.session_state.bids_zip_path, 'rb'),
+                        'application/zip'
                     )
+                }
+                data = {
+                    'participant_label': subj_id,
+                    'modalities': modalities_str,
+                    'n_procs': str(n_procs),
+                    'mem_gb': str(mem_gb)
+                }
 
-                # Optionally display IQMs dataframe in the app
-                st.subheader("Extracted Image Quality Metrics (IQMs)")
-                st.dataframe(iqms_df)
+                try:
+                    response = requests.post(
+                        f"{aws_api_url}/run-mriqc",
+                        files=files,
+                        data=data
+                    )
+                    
+                    if response.status_code != 200:
+                        st.error(f"MRIQC failed: {response.text}")
+                        return
 
-            else:
-                st.warning(
-                    "No HTML reports found in MRIQC results for IQM extraction.")
+                    # Save results
+                    temp_dir = Path(st.session_state.temp_dir)
+                    result_zip = temp_dir / "mriqc_results.zip"
+                    with open(result_zip, "wb") as f:
+                        f.write(response.content)
 
-            # Display MRIQC log if exists
-            log_files = list(result_dir.rglob("mriqc_log.txt"))
-            if log_files:
-                with open(log_files[0], "r") as lf:
-                    log_data = lf.read()
-                st.subheader("MRIQC Log")
-                st.text_area("Log Output", log_data, height=400)
-            else:
-                st.warning("No MRIQC log file found.")
+                    # Extract results
+                    result_dir = temp_dir / "mriqc_results"
+                    result_dir.mkdir(exist_ok=True)
+                    with zipfile.ZipFile(result_zip, 'r') as zf:
+                        zf.extractall(result_dir)
 
-            # Display HTML reports inline in Streamlit
-            for report in html_reports:
-                with open(report, "r") as rf:
-                    html_data = rf.read()
-                st.components.v1.html(html_data, height=1000, scrolling=True)
+                    # Process IQMs
+                    iqm_records = []
+                    html_reports = list(result_dir.rglob("*.html"))
 
-            st.success("MRIQC processing and IQM extraction complete!")
+                    if html_reports:
+                        for html_file in html_reports:
+                            iqms = extract_iqms_from_html(html_file)
+                            iqms['Report Filename'] = html_file.name
+                            iqm_records.append(iqms)
 
+                        iqms_df = pd.DataFrame(iqm_records)
+                        iqm_csv_path = result_dir / "MRIQC_IQMs.csv"
+                        iqms_df.to_csv(iqm_csv_path, index=False)
 
-if __name__ == "__main__":
-    main()
+                        # Re-zip with IQMs
+                        updated_zip_path = temp_dir / "mriqc_results_with_IQMs"
+                        shutil.make_archive(
+                            str(updated_zip_path),
+                            'zip', 
+                            root_dir=result_dir
+                        )
+
+                        # Download button
+                        with open(f"{updated_zip_path}.zip", "rb") as f:
+                            st.download_button(
+                                "Download MRIQC Results (including IQMs CSV)",
+                                data=f,
+                                file_name="mriqc_results_with_IQMs.zip",
+                                mime="application/zip"
+                            )
+
+                        # Display results
+                        st.subheader("Extracted Image Quality Metrics (IQMs)")
+                        st.dataframe(iqms_df)
+
+                        # Show HTML reports
+                        for report in html_reports:
+                            with open(report, "r") as rf:
+                                html_data = rf.read()
+                            st.components.v1.html(html_data, height=1000, scrolling=True)
+                    else:
+                        st.warning("No HTML reports found in MRIQC results.")
+
+                    # Show logs if available
+                    log_files = list(result_dir.rglob("mriqc_log.txt"))
+                    if log_files:
+                        with open(log_files[0], "r") as lf:
+                            log_data = lf.read()
+                        st.subheader("MRIQC Log")
+                        st.text_area("Log Output", log_data, height=400)
+
+                    st.success("MRIQC processing complete!")
+
+                except Exception as e:
+                    st.error(f"Error during MRIQC processing: {str(e)}")
 
 # ------------------------------
-# Footer: Lab Branding (Custom)
+# Footer and Branding
 # ------------------------------
-
-# st.markdown(
-#    """
-#    <div style="text-align: center; margin-top: 50px;">
-#        <img src="https://github.com/NkwamPhilip/MLAB/blob/2545d5774dc9b376b6b0180f25388bace232497c/MLAB.png" alt="Lab Logo" style="height: 50px;">
- #       <h3>Medical Artificial Intelligence Lab</h3>
- #   </div>
- #   """,
- #   unsafe_allow_html=True
-# )
-
 
 # Container with collective padding
 st.markdown("""
@@ -521,7 +492,6 @@ with col2:
 
 # Close container div
 st.markdown("</div>", unsafe_allow_html=True)
-
 
 st.markdown(
     """
@@ -549,8 +519,10 @@ st.markdown(
     </style>
     <div class="custom-footer">
         <strong>Medical Artificial Intelligence Lab || Contact Email: info@mailab.io </strong> – © 2025 All Rights Reserved
-
     </div>
     """,
     unsafe_allow_html=True
 )
+
+if __name__ == "__main__":
+    main()
