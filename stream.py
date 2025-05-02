@@ -10,7 +10,8 @@ from pathlib import Path
 import os
 import json
 import datetime
-
+import time
+from io import BytesIO
 # ------------------------------
 # Streamlit Page Configuration & Branding
 # ------------------------------
@@ -81,51 +82,130 @@ st.markdown("""
 # Helper Functions
 # ------------------------------
 
+
 def generate_dcm2bids_config(temp_dir: Path) -> Path:
     config = {
         "descriptions": [
+            # Anatomical Imaging
             {
                 "datatype": "anat",
                 "suffix": "T1w",
-                "criteria": {"SeriesDescription": "*T1*"},
+                "criteria": {
+                    "SeriesDescription": "*T1*",
+                    "ImageType": ["ORIGINAL", "(?i).*(PRIMARY|PERMANY|OTHER).*"]
+                },
                 "sidecar_changes": {"ProtocolName": "T1w"}
             },
             {
                 "datatype": "anat",
                 "suffix": "T2w",
-                "criteria": {"SeriesDescription": "*T2*"},
+                "criteria": {
+                    "SeriesDescription": "*T2*",
+                    "ImageType": ["ORIGINAL", "(?i).*(PRIMARY|PERMANY).*"]
+                },
                 "sidecar_changes": {"ProtocolName": "T2w"}
             },
             {
                 "datatype": "anat",
                 "suffix": "FLAIR",
-                "criteria": {"SeriesDescription": "*FLAIR*|*fluid*"},
-                "sidecar_changes": {"ProtocolName": "FLAIR"}
+                "criteria": {
+                    "SeriesDescription": "*FLAIR*",
+                    "ImageType": ["ORIGINAL", "(?i).*(PRIMARY|PERMANY).*"]
+                }
             },
-            {
-                "datatype": "dwi",
-                "suffix": "dwi",
-                "criteria": {"SeriesDescription": "*DWI*|*DTI*"},
-                "sidecar_changes": {"ProtocolName": "DWI"}
-            },
+
+            # Functional Imaging
             {
                 "datatype": "func",
                 "suffix": "bold",
-                "criteria": {"SeriesDescription": "*BOLD*|*fMRI*|*magnitude*"},
-                "sidecar_changes": {"ProtocolName": "BOLD"}
+                "criteria": {
+                    "SeriesDescription": "*BOLD*",
+                    "ImageType": ["ORIGINAL", "(?i).*(PRIMARY|FMRI|OTHER).*"]
+                },
+                "sidecar_changes": {"TaskName": "rest"}
             },
+            {
+                "datatype": "func",
+                "suffix": "sbref",
+                "criteria": {
+                    "SeriesDescription": "*SBRef*",
+                    "ImageType": ["ORIGINAL", "(?i).*(PRIMARY|FMRI|OTHER).*"]
+                }
+            },
+
+            # Diffusion Imaging
+            {
+                "datatype": "dwi",
+                "suffix": "dwi",
+                "criteria": {
+                    "SeriesDescription": "*DWI*|*DTI*",
+                    "ImageType": ["ORIGINAL", "(?i).*(PRIMARY|DIFFUSION).*"]
+                },
+                "sidecar_changes": {
+                    "PhaseEncodingDirection": "j",
+                    "TotalReadoutTime": 0.028
+                }
+            },
+
+            # Field Maps
+            {
+                "datatype": "fmap",
+                "suffix": "phasediff",
+                "criteria": {
+                    "SeriesDescription": "*FMRI_DISTORTION*",
+                    "ImageType": ["ORIGINAL", "(?i).*(P|PHASE).*"]
+                }
+            },
+            {
+                "datatype": "fmap",
+                "suffix": "magnitude",
+                "criteria": {
+                    "SeriesDescription": "*FMRI_DISTORTION*",
+                    "ImageType": ["ORIGINAL", "(?i).*(M|MAG).*"]
+                }
+            },
+
+            # Perfusion Imaging
             {
                 "datatype": "perf",
                 "suffix": "asl",
-                "criteria": {"SeriesDescription": "*ASL*|*Perfusion*"},
-                "sidecar_changes": {"ProtocolName": "ASL"}
+                "criteria": {
+                    "SeriesDescription": "*ASL*|*Perfusion*",
+                    "ImageType": ["ORIGINAL", "(?i).*(PRIMARY|PERFUSION).*"]
+                }
+            },
+
+            # Task-Based fMRI(Example for different tasks)
+            {
+                "datatype": "func",
+                "suffix": "bold",
+                "criteria": {
+                    "SeriesDescription": "*Nback*",
+                    "ImageType": ["ORIGINAL", "(?i).*(PRIMARY|FMRI).*"]
+                },
+                "sidecar_changes": {"TaskName": "nback"}
+            },
+
+            # Multi-echo Sequences
+            {
+                "datatype": "anat",
+                "suffix": "MESE",
+                "criteria": {
+                    "SeriesDescription": "*MultiEcho*",
+                    "ImageType": ["ORIGINAL", "(?i).*(PRIMARY|MULTIECHO).*"]
+                }
             }
-        ]
+        ],
+        "default_entities": {
+            "subject": "{subject}",
+            "session": "{session}"
+        }
     }
     config_file = temp_dir / "dcm2bids_config.json"
     with open(config_file, 'w') as f:
         json.dump(config, f, indent=4)
     return config_file
+
 
 def run_dcm2bids(dicom_dir: Path, bids_out: Path, subj_id: str, ses_id: str, config_file: Path):
     cmd = ["dcm2bids", "-d", str(dicom_dir), "-p", subj_id,
@@ -139,72 +219,125 @@ def run_dcm2bids(dicom_dir: Path, bids_out: Path, subj_id: str, ses_id: str, con
     else:
         st.success("dcm2bids completed successfully.")
 
-def move_files_in_tmp(bids_out: Path, subj_id: str, ses_id: str):
+
+def classify_from_metadata(meta):
+    """
+    Classifies based on metadata if and only if ImageType includes 'ORIGINAL'.
+    """
+    image_type = meta.get("ImageType", [])
+    if isinstance(image_type, str):
+        image_type = [image_type]
+
+    if not any("original" in t.lower() for t in image_type):
+        return None, None  # Skip derived images
+
+    desc = (meta.get("SeriesDescription", "") + " " +
+            meta.get("ProtocolName", "")).lower()
+    pulse = meta.get("PulseSequenceName", "").lower()
+
+    if "t1" in desc and "flair" not in desc:
+        return "anat", "T1w"
+    elif "t2" in desc:
+        return "anat", "T2w"
+    elif "flair" in desc or "fluid" in desc:
+        return "anat", "FLAIR"
+    elif "dwi" in desc or "dti" in desc:
+        return "dwi", "dwi"
+    elif "bold" in desc or "fmri" in desc or "functional" in desc or "activation" in desc or "epi" in pulse:
+        return "func", "bold"
+    elif "asl" in desc or "perfusion" in desc:
+        return "perf", "asl"
+    else:
+        return None, None
+
+
+def classify_and_move_original_files(bids_out: Path, subj_id: str, ses_id: str):
     tmp_folder = bids_out / "tmp_dcm2bids" / f"sub-{subj_id}_ses-{ses_id}"
     if not tmp_folder.exists():
         return
+
     sub_dir = bids_out / f"sub-{subj_id}"
     ses_dir = sub_dir / f"ses-{ses_id}" if ses_id else sub_dir
     ses_dir.mkdir(parents=True, exist_ok=True)
+
     modality_paths = {
         "anat": ses_dir / "anat",
         "dwi":  ses_dir / "dwi",
         "func": ses_dir / "func",
         "perf": ses_dir / "perf"
     }
-    for fpath in tmp_folder.rglob("*"):
-        if not fpath.is_file():
-            continue
-        exts = "".join(fpath.suffixes)
-        if not any(exts.endswith(e) for e in [".nii", ".nii.gz", ".json", ".bval", ".bvec"]):
-            continue
-        # try to read metadata from JSON sidecar
-        series_desc = ""
-        sidecar = fpath.with_suffix('.json') if '.nii' in fpath.suffixes else None
-        if sidecar and sidecar.exists():
-            try:
-                meta = json.load(open(sidecar, 'r'))
-                series_desc = meta.get("SeriesDescription", "") or meta.get("ProtocolName", "")
-            except Exception:
-                series_desc = ""
-        key = series_desc.lower() if series_desc else fpath.name.lower()
 
-        if "t1" in key:
-            modality_label, suffix = "anat", "T1w"
-        elif "t2" in key:
-            modality_label, suffix = "anat", "T2w"
-        elif "flair" in key or "fluid" in key:
-            modality_label, suffix = "anat", "FLAIR"
-        elif "dwi" in key or "dti" in key:
-            modality_label, suffix = "dwi", "dwi"
-        elif "bold" in key or "fmri" in key or "magnitude" in key:
-            modality_label, suffix = "func", "bold"
-        elif "asl" in key or "perfusion" in key:
-            modality_label, suffix = "perf", "asl"
+    # Loop over JSON sidecars only
+    for json_file in tmp_folder.rglob("*.json"):
+        try:
+            with open(json_file, "r") as jf:
+                meta = json.load(jf)
+        except Exception:
+            st.warning(f"Could not read JSON: {json_file.name}")
+            continue
+
+        # Check for ORIGINAL in ImageType
+        image_type = meta.get("ImageType", [])
+        if isinstance(image_type, str):
+            image_type = [image_type]
+        if not any("original" in item.lower() for item in image_type):
+            st.info(f"Discarded non-original: {json_file.name}")
+            continue
+
+        # Determine modality from metadata
+        desc = (meta.get("SeriesDescription", "") + " " +
+                meta.get("ProtocolName", "")).lower()
+        pulse = meta.get("PulseSequenceName", "").lower()
+
+        if "t1" in desc and "flair" not in desc:
+            modality, suffix = "anat", "T1w"
+        elif "t2" in desc:
+            modality, suffix = "anat", "T2w"
+        elif "flair" in desc or "fluid" in desc:
+            modality, suffix = "anat", "FLAIR"
+        elif "dwi" in desc or "dti" in desc:
+            modality, suffix = "dwi", "dwi"
+        elif "bold" in desc or "fmri" in desc or "functional" in desc or "activation" in desc or "epi" in pulse:
+            modality, suffix = "func", "bold"
+        elif "asl" in desc or "perfusion" in desc:
+            modality, suffix = "perf", "asl"
         else:
+            st.info(f"Unclassified: {json_file.name}")
             continue
 
-        target_dir = modality_paths[modality_label]
-        if not target_dir.exists():
-            target_dir.mkdir(parents=True, exist_ok=True)
+        # Locate matching NIfTI image
+        nii_file = json_file.with_suffix(".nii.gz")
+        if not nii_file.exists():
+            nii_file = json_file.with_suffix(".nii")
+        if not nii_file.exists():
+            st.warning(f"No matching NIfTI for: {json_file.name}")
+            continue
 
-        # Determine extension
-        if fpath.name.lower().endswith(".nii.gz"):
-            ext = ".nii.gz"
-        else:
-            ext = fpath.suffix
+        target_dir = modality_paths[modality]
+        target_dir.mkdir(parents=True, exist_ok=True)
 
-        new_filename = f"sub-{subj_id}"
+        # Compose filenames
+        base_name = f"sub-{subj_id}"
         if ses_id:
-            new_filename += f"_ses-{ses_id}"
-        new_filename += f"_{suffix}{ext}"
-        new_path = target_dir / new_filename
+            base_name += f"_ses-{ses_id}"
+        base_name += f"_{suffix}"
 
-        fpath.rename(new_path)
+        new_json_path = target_dir / f"{base_name}.json"
+        new_nii_path = target_dir / (f"{base_name}.nii.gz")
 
-    # Clean up temp
+        # Move both
+        shutil.move(str(json_file), str(new_json_path))
+        shutil.move(str(nii_file), str(new_nii_path))
+        st.success(f"Moved: {new_json_path.name} and {new_nii_path.name}")
+
+    # Cleanup
     shutil.rmtree(tmp_folder.parent, ignore_errors=True)
-    st.info("Cleaned up leftover files in tmp_dcm2bids.")
+    st.info("Finished organizing ORIGINAL NIfTI + JSON pairs.")
+
+
+# This line replaces your old move_files_in_tmp()
+move_files_in_tmp = classify_and_move_original_files
+
 
 def create_bids_top_level_files(bids_dir: Path, subject_id: str):
     dd_file = bids_dir / "dataset_description.json"
@@ -255,8 +388,11 @@ Please see the official [BIDS documentation](https://bids.neuroimaging.io) for d
         with open(participants_json, 'w') as f:
             json.dump(pjson, f, indent=4)
 
+
 def zip_directory(folder_path: Path, zip_file_path: Path):
-    shutil.make_archive(str(zip_file_path.with_suffix("")), 'zip', root_dir=folder_path)
+    shutil.make_archive(str(zip_file_path.with_suffix("")),
+                        'zip', root_dir=folder_path)
+
 
 def extract_iqms_from_html(html_file: Path):
     iqms = {}
@@ -275,6 +411,7 @@ def extract_iqms_from_html(html_file: Path):
 
     return iqms
 
+
 def extract_all_iqms(result_dir: Path):
     iqm_list = []
     html_reports = list(result_dir.rglob("*.html"))
@@ -288,6 +425,7 @@ def extract_all_iqms(result_dir: Path):
 # Main Streamlit App
 # ------------------------------
 
+
 def main():
     st.title("DICOM → BIDS → MRIQC")
 
@@ -296,10 +434,9 @@ def main():
 
     selected_modalities = st.multiselect(
         "Select MRIQC modalities:",
-        ["T1w", "T2w", "bold", "flair", "dwi", "asl"],
+        ["T1w", "T2w", "bold"],
         default=["T1w"]
     )
-    modalities_str = " ".join(selected_modalities)
 
     # Resource allocation settings
     col1, col2 = st.columns(2)
@@ -307,19 +444,19 @@ def main():
         n_procs = st.selectbox(
             "CPU Cores to Use",
             options=[4, 8, 12, 16],
-            index=2,  # Default to 12
+            index=3,  # Default to 16
             help="More cores = faster processing but higher resource usage"
         )
     with col2:
         mem_gb = st.selectbox(
             "Memory Allocation (GB)",
             options=[16, 32, 48, 64],
-            index=2,  # Default to 48
+            index=3,  # Default to 64
             help="More memory allows processing larger datasets"
         )
 
-    aws_api_url = "http://54.162.130.95:8000"
-    ws_url = "ws://54.162.130.95:8000/ws/mriqc"
+    API_BASE = "http://52.91.185.103:8000"
+    ws_url = "ws://52.91.185.103:8000/ws/mriqc"
 
     dicom_zip = st.file_uploader("Upload DICOM ZIP", type=["zip"])
 
@@ -348,7 +485,8 @@ def main():
 
                 ds_file = bids_out / "dataset_description.json"
                 if ds_file.exists():
-                    st.success("dataset_description.json created successfully.")
+                    st.success(
+                        "dataset_description.json created successfully.")
                 else:
                     st.error("dataset_description.json not found at BIDS root!")
 
@@ -359,121 +497,170 @@ def main():
 
                 with open(bids_zip_path, "rb") as f:
                     st.download_button(
-                        "Download BIDS Dataset", 
+                        "Download BIDS Dataset",
                         data=f,
-                        file_name="BIDS_dataset.zip", 
+                        file_name="BIDS_dataset.zip",
                         mime="application/zip"
                     )
 
                 st.session_state.temp_dir = str(temp_dir)
                 st.session_state.bids_zip_path = str(bids_zip_path)
-
+        # Show selected modalities before job submission
+        if selected_modalities:
+            st.markdown("### ✅ Selected Modalities for MRIQC")
+            st.success(
+                f"You have selected: `{', '.join(selected_modalities)}`")
+        else:
+            st.warning("⚠️ No modalities selected!")
         # Phase 2: Send BIDS to AWS for MRIQC Processing
         if st.button("Send BIDS to Web for MRIQC"):
-    if "temp_dir" not in st.session_state:
-        st.error("No BIDS dataset found. Please run the conversion first.")
-        return
+            if "temp_dir" not in st.session_state:
+                st.error("No BIDS dataset found. Please run the conversion first.")
+                st.stop()
 
-    with st.spinner("Running MRIQC on web server..."):
-        try:
-            # Prepare the multipart form data
-            with open(st.session_state.bids_zip_path, 'rb') as f:
-                files = {'bids_zip': ('bids_dataset.zip', f, 'application/zip')}
-                
-                # Convert modalities to list if needed
-                modalities_list = selected_modalities  # Already a list from multiselect
-                
-                response = requests.post(
-                    f"{aws_api_url}/run-mriqc",
-                    files=files,
-                    data={
-                        'participant_label': subj_id,
-                        'modalities': ' '.join(modalities_list),  # Join with space
-                        'n_procs': str(n_procs),
-                        'mem_gb': str(mem_gb)
-                    },
-                    timeout=60  # Add timeout
-                )
-                
-            # Better error response handling
-            if response.status_code != 200:
-                try:
-                    error_detail = response.json().get('detail', response.text)
-                except:
-                    error_detail = response.text
-                st.error(f"MRIQC failed (Status {response.status_code}): {error_detail}")
-                return
-                    # Save results
-                    temp_dir = Path(st.session_state.temp_dir)
-                    result_zip = temp_dir / "mriqc_results.zip"
-                    with open(result_zip, "wb") as f:
-                        f.write(response.content)
+            temp_dir = Path(st.session_state.temp_dir)
+            bids_zip_path = st.session_state.bids_zip_path
 
-                    # Extract results
-                    result_dir = temp_dir / "mriqc_results"
-                    result_dir.mkdir(exist_ok=True)
-                    with zipfile.ZipFile(result_zip, 'r') as zf:
-                        zf.extractall(result_dir)
+            # ✅ Ensure current selections are reflected
+            modalities_str = " ".join(selected_modalities)
+            # 🧪 Log for debugging
+            st.info(f"Modalities Sent: {modalities_str}")
 
-                    # Process IQMs
-                    iqm_records = []
-                    html_reports = list(result_dir.rglob("*.html"))
+            with open(bids_zip_path, 'rb') as f:
+                files = {'bids_zip': ('bids_dataset.zip',
+                                      f, 'application/zip')}
+                metadata = {
+                    'participant_label': subj_id,
+                    'modalities': modalities_str,
+                    'session_id': ses_id or "baseline",
+                    'n_procs': str(n_procs),
+                    'mem_gb': str(mem_gb)
+                }
 
-                    if html_reports:
-                        for html_file in html_reports:
-                            iqms = extract_iqms_from_html(html_file)
-                            iqms['Report Filename'] = html_file.name
-                            iqm_records.append(iqms)
+                st.info(f"Sending ZIP to: {API_BASE}/submit-job")
+                t0 = time.time()
+                with st.spinner("Submitting job to backend..."):
+                    submit_response = requests.post(
+                        f"{API_BASE}/submit-job", files=files, data=metadata
+                    )
+                t1 = time.time()
+                st.info(f"Request sent in {t1 - t0:.2f} seconds")
 
-                        iqms_df = pd.DataFrame(iqm_records)
-                        iqm_csv_path = result_dir / "MRIQC_IQMs.csv"
-                        iqms_df.to_csv(iqm_csv_path, index=False)
+                if submit_response.status_code != 200:
+                    st.error(
+                        f"MRIQC failed (Status {submit_response.status_code}): {submit_response.text}")
+                    st.stop()
 
-                        # Re-zip with IQMs
-                        updated_zip_path = temp_dir / "mriqc_results_with_IQMs"
-                        shutil.make_archive(
-                            str(updated_zip_path),
-                            'zip', 
-                            root_dir=result_dir
-                        )
+                job_id = submit_response.json().get("job_id")
+                st.info(f"✅ Job submitted successfully. Job ID: `{job_id}`")
 
-                        # Download button
-                        with open(f"{updated_zip_path}.zip", "rb") as f:
-                            st.download_button(
-                                "Download MRIQC Results (including IQMs CSV)",
-                                data=f,
-                                file_name="mriqc_results_with_IQMs.zip",
-                                mime="application/zip"
-                            )
+            # Start polling
+            with st.spinner("Processing MRIQC... please wait."):
+                for attempt in range(120):  # max wait ~20 min
+                    time.sleep(10)
+                    status_response = requests.get(
+                        f"{API_BASE}/job-status/{job_id}")
 
-                        # Display results
-                        st.subheader("Extracted Image Quality Metrics (IQMs)")
-                        st.dataframe(iqms_df)
+                    if status_response.status_code != 200:
+                        st.warning(
+                            f"Polling error (try {attempt + 1}): {status_response.text}")
+                        continue
 
-                        # Show HTML reports
-                        for report in html_reports:
-                            with open(report, "r") as rf:
-                                html_data = rf.read()
-                            st.components.v1.html(html_data, height=1000, scrolling=True)
-                    else:
-                        st.warning("No HTML reports found in MRIQC results.")
+                    result = status_response.json()
+                    if result["status"] == "complete":
+                        st.success("✅ MRIQC job complete!")
 
-                    # Show logs if available
-                    log_files = list(result_dir.rglob("mriqc_log.txt"))
-                    if log_files:
-                        with open(log_files[0], "r") as lf:
-                            log_data = lf.read()
-                        st.subheader("MRIQC Log")
-                        st.text_area("Log Output", log_data, height=400)
+                        # Download result
+                        download_url = f"{API_BASE}/download/{job_id}"
+                        response = requests.get(download_url)
 
-                    st.success("MRIQC processing complete!")
+                        if response.status_code != 200:
+                            st.error(
+                                f"Failed to download result: {response.text}")
+                            break
 
-                except Exception as e:
-                    st.error(f"Error during MRIQC processing: {str(e)}")
+                        zip_bytes = BytesIO(response.content)
+
+                        # Extract
+                        result_dir = temp_dir / "mriqc_results"
+                        result_dir.mkdir(exist_ok=True)
+                        with zipfile.ZipFile(zip_bytes) as zf:
+                            zf.extractall(result_dir)
+
+                        # Parse IQMs
+                        iqm_records = []
+                        html_reports = list(result_dir.rglob("*.html"))
+                        if html_reports:
+                            for html_file in html_reports:
+                                iqms = extract_iqms_from_html(html_file)
+                                iqms["Report Filename"] = html_file.name
+                                iqm_records.append(iqms)
+
+                            iqms_df = pd.DataFrame(iqm_records)
+                            iqm_csv_path = result_dir / "MRIQC_IQMs.csv"
+                            iqms_df.to_csv(iqm_csv_path, index=False)
+
+                            # Rezip
+                            updated_zip_path = temp_dir / "mriqc_results_with_IQMs"
+                            shutil.make_archive(
+                                str(updated_zip_path), 'zip', root_dir=result_dir)
+
+                            # Download button
+                            with open(f"{updated_zip_path}.zip", "rb") as f:
+                                st.download_button(
+                                    label="📥 Download MRIQC Results (including IQMs CSV)",
+                                    data=f,
+                                    file_name="mriqc_results_with_IQMs.zip",
+                                    mime="application/zip"
+                                )
+
+                            # View IQMs
+                            st.subheader(
+                                "Extracted Image Quality Metrics (IQMs)")
+                            st.dataframe(iqms_df)
+
+                            # View HTMLs
+                            for report in html_reports:
+                                with open(report, "r") as rf:
+                                    html_data = rf.read()
+                                st.components.v1.html(
+                                    html_data, height=1000, scrolling=True)
+                        else:
+                            st.warning(
+                                "No HTML reports found in MRIQC results.")
+
+                        # Log
+                        log_files = list(result_dir.rglob("mriqc_log.txt"))
+                        if log_files:
+                            with open(log_files[0], "r") as lf:
+                                log_data = lf.read()
+                            st.subheader("MRIQC Log")
+                            st.text_area("Log Output", log_data, height=400)
+
+                        # 🔥 Clean up
+                        cleanup_url = f"{API_BASE}/delete-job/{job_id}"
+                        cleanup_response = requests.delete(cleanup_url)
+                        if cleanup_response.status_code == 200:
+                            st.info("✅ Backend job data cleaned up.")
+                        else:
+                            st.warning(
+                                "⚠️ Failed to clean up job data on server.")
+                        break
+
+                    elif result["status"] == "failed":
+                        st.error(
+                            f"❌ Job failed: {result.get('error', 'Unknown error')}")
+                        break
+
+                else:
+                    st.warning(
+                        "⚠️ MRIQC processing timed out after 20 minutes.")
+
 
 # ------------------------------
 # Footer and Branding
 # ------------------------------
+
 
 # Container with collective padding
 st.markdown("""
