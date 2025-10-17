@@ -455,8 +455,8 @@ def main():
             help="More memory allows processing larger datasets"
         )
 
-    API_BASE = "http://13.41.16.159:8000"
-    ws_url = "ws://13.41.16.159:8000/ws/mriqc"
+   API_BASE = "http://20.184.131.164:8000"
+   ws_url = "ws://20.184.131.164:8000/ws/mriqc"
 
     dicom_zip = st.file_uploader("Upload DICOM ZIP", type=["zip"])
 
