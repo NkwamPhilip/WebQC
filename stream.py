@@ -430,7 +430,7 @@ def main():
     st.title("DICOM → BIDS → MRIQC")
 
     subj_id = st.text_input("Subject ID (e.g. '01')", value="01")
-    ses_id = st.text_input("Session ID (optional)", value="Baseline")
+    ses_id = st.text_input("Session ID (optional)", value="baseline")
 
     selected_modalities = st.multiselect(
         "Select MRIQC modalities:",
@@ -438,30 +438,18 @@ def main():
         default=["T1w"]
     )
 
-    # Resource allocation settings
     col1, col2 = st.columns(2)
     with col1:
-        n_procs = st.selectbox(
-            "CPU Cores to Use",
-            options=[4, 8, 12, 16],
-            index=3,  # Default to 16
-            help="More cores = faster processing but higher resource usage"
-        )
+        n_procs = st.selectbox("CPU Cores to Use", [4, 8, 12, 16], index=0)
     with col2:
-        mem_gb = st.selectbox(
-            "Memory Allocation (GB)",
-            options=[16, 32, 48, 64],
-            index=3,  # Default to 64
-            help="More memory allows processing larger datasets"
-        )
+        mem_gb = st.selectbox("Memory Allocation (GB)",
+                              [16, 32, 48, 64], index=0)
 
     API_BASE = "http://20.184.131.164:8000"
-    ws_url = "ws://20.184.131.164:8000/ws/mriqc"
 
     dicom_zip = st.file_uploader("Upload DICOM ZIP", type=["zip"])
 
     if dicom_zip:
-        # Phase 1: DICOM to BIDS Conversion
         if st.button("Run DICOM → BIDS Conversion"):
             with st.spinner("Converting DICOM to BIDS..."):
                 job_id = str(uuid.uuid4())[:8]
@@ -480,20 +468,12 @@ def main():
                 config_file = generate_dcm2bids_config(temp_dir)
                 run_dcm2bids(dicom_dir, bids_out, subj_id, ses_id, config_file)
 
-                move_files_in_tmp(bids_out, subj_id, ses_id)
+                classify_and_move_original_files(bids_out, subj_id, ses_id)
                 create_bids_top_level_files(bids_out, subj_id)
-
-                ds_file = bids_out / "dataset_description.json"
-                if ds_file.exists():
-                    st.success(
-                        "dataset_description.json created successfully.")
-                else:
-                    st.error("dataset_description.json not found at BIDS root!")
 
                 bids_zip_path = temp_dir / "bids_dataset.zip"
                 zip_directory(bids_out, bids_zip_path)
                 st.success("DICOM to BIDS conversion complete!")
-                st.info(f"BIDS dataset is ready: {bids_zip_path}")
 
                 with open(bids_zip_path, "rb") as f:
                     st.download_button(
@@ -505,162 +485,179 @@ def main():
 
                 st.session_state.temp_dir = str(temp_dir)
                 st.session_state.bids_zip_path = str(bids_zip_path)
-        # Show selected modalities before job submission
+
         if selected_modalities:
             st.markdown("### ✅ Selected Modalities for MRIQC")
             st.success(
                 f"You have selected: `{', '.join(selected_modalities)}`")
         else:
             st.warning("⚠️ No modalities selected!")
-        # Phase 2: Send BIDS to AWS for MRIQC Processing
+
         if st.button("Send BIDS to Web for MRIQC"):
             if "temp_dir" not in st.session_state:
                 st.error("No BIDS dataset found. Please run the conversion first.")
                 st.stop()
 
             temp_dir = Path(st.session_state.temp_dir)
-            bids_zip_path = st.session_state.bids_zip_path
+            bids_zip_path = Path(st.session_state.bids_zip_path)
 
-            # ✅ Ensure current selections are reflected
+            if not bids_zip_path.exists():
+                st.error(f"BIDS zip not found: {bids_zip_path}")
+                st.stop()
+
             modalities_str = " ".join(selected_modalities)
-            # 🧪 Log for debugging
-            st.info(f"Modalities Sent: {modalities_str}")
+            st.info(f"📦 Modalities: {modalities_str}")
 
             with open(bids_zip_path, 'rb') as f:
-                files = {'bids_zip': ('bids_dataset.zip',
-                                      f, 'application/zip')}
-                metadata = {
-                    'participant_label': subj_id,
-                    'modalities': modalities_str,
-                    'session_id': ses_id or "baseline",
-                    'n_procs': str(n_procs),
-                    'mem_gb': str(mem_gb)
-                }
+                file_content = f.read()
 
-                st.info(f"Sending ZIP to: {API_BASE}/submit-job")
-                t0 = time.time()
-                with st.spinner("Submitting job to backend..."):
-                    submit_response = requests.post(
-                        f"{API_BASE}/submit-job", files=files, data=metadata
+            files = {'bids_zip': ('bids_dataset.zip',
+                                  file_content, 'application/zip')}
+            data = {
+                'participant_label': subj_id,
+                'modalities': modalities_str,
+                'session_id': ses_id or "",
+                'n_procs': str(n_procs),
+                'mem_gb': str(mem_gb)
+            }
+
+            st.info(f"🚀 Sending to: {API_BASE}/run-mriqc")
+            st.warning("⏳ Processing takes ~10 minutes. Please wait...")
+
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            try:
+                progress_bar.progress(10)
+                status_text.text("Uploading BIDS dataset...")
+
+                with st.spinner("Processing on server... This may take several minutes."):
+                    # ✅ correct var (data) + stream enabled
+                    response = requests.post(
+                        f"{API_BASE}/run-mriqc",
+                        files=files,
+                        data=data,                    # <-- FIXED
+                        timeout=(120, 7200),
+                        stream=True
                     )
-                t1 = time.time()
-                st.info(f"Request sent in {t1 - t0:.2f} seconds")
 
-                if submit_response.status_code != 200:
-                    st.error(
-                        f"MRIQC failed (Status {submit_response.status_code}): {submit_response.text}")
+                # If backend returned an error, surface it now
+                if response.status_code != 200:
+                    # try to show structured detail if available
+                    try:
+                        detail = response.json().get("detail")
+                        st.error(
+                            f"❌ MRIQC failed ({response.status_code}): {detail}")
+                    except Exception:
+                        st.error(f"❌ MRIQC failed ({response.status_code})")
+                        st.error(response.text[:800])
                     st.stop()
 
-                job_id = submit_response.json().get("job_id")
-                st.info(f"✅ Job submitted successfully. Job ID: `{job_id}`")
+                progress_bar.progress(50)
+                status_text.text(
+                    "Processing completed, downloading results...")
 
-            # Start polling
-            with st.spinner("Processing MRIQC... please wait."):
-                for attempt in range(120):  # max wait ~20 min
-                    time.sleep(10)
-                    status_response = requests.get(
-                        f"{API_BASE}/job-status/{job_id}")
+                # ✅ Save streamed ZIP to disk with progress
+                result_zip_path = Path("mriqc_results.zip")
+                total = int(response.headers.get("Content-Length") or 0)
+                downloaded = 0
 
-                    if status_response.status_code != 200:
-                        st.warning(
-                            f"Polling error (try {attempt + 1}): {status_response.text}")
-                        continue
+                with open(result_zip_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=1024 * 256):
+                        if not chunk:
+                            continue
+                        f.write(chunk)
+                        if total:
+                            downloaded += len(chunk)
+                            # map 50->95% during download
+                            pct = 50 + int(45 * (downloaded / total))
+                            progress_bar.progress(min(pct, 95))
 
-                    result = status_response.json()
-                    if result["status"] == "complete":
-                        st.success("✅ MRIQC job complete!")
+                # ✅ Validate the ZIP
+                if not result_zip_path.exists() or result_zip_path.stat().st_size == 0:
+                    st.error("❌ Received empty file from backend.")
+                    st.stop()
 
-                        # Download result
-                        download_url = f"{API_BASE}/download/{job_id}"
-                        response = requests.get(download_url)
+                try:
+                    with zipfile.ZipFile(result_zip_path, "r") as zf:
+                        zf.testzip()  # quick integrity check
+                except zipfile.BadZipFile:
+                    ct = response.headers.get("content-type", "")
+                    cd = response.headers.get("content-disposition", "")
+                    st.error("❌ Response was not a valid ZIP file.")
+                    st.info(f"content-type: {ct}")
+                    st.info(f"content-disposition: {cd}")
+                    st.stop()
 
-                        if response.status_code != 200:
-                            st.error(
-                                f"Failed to download result: {response.text}")
-                            break
+                progress_bar.progress(96)
+                status_text.text("Extracting results...")
 
-                        zip_bytes = BytesIO(response.content)
+                # ✅ Extract to a fresh folder
+                extract_dir = Path("mriqc_results")
+                if extract_dir.exists():
+                    shutil.rmtree(extract_dir, ignore_errors=True)
+                extract_dir.mkdir(parents=True, exist_ok=True)
 
-                        # Extract
-                        result_dir = temp_dir / "mriqc_results"
-                        result_dir.mkdir(exist_ok=True)
-                        with zipfile.ZipFile(zip_bytes) as zf:
-                            zf.extractall(result_dir)
+                with zipfile.ZipFile(result_zip_path, "r") as zf:
+                    zf.extractall(extract_dir)
 
-                        # Parse IQMs
-                        iqm_records = []
-                        html_reports = list(result_dir.rglob("*.html"))
-                        if html_reports:
-                            for html_file in html_reports:
-                                iqms = extract_iqms_from_html(html_file)
-                                iqms["Report Filename"] = html_file.name
-                                iqm_records.append(iqms)
+                progress_bar.progress(100)
+                status_text.text("Complete!")
+                st.success(
+                    "✅ MRIQC completed successfully and results were received.")
 
-                            iqms_df = pd.DataFrame(iqm_records)
-                            iqm_csv_path = result_dir / "MRIQC_IQMs.csv"
-                            iqms_df.to_csv(iqm_csv_path, index=False)
+                # ---- UI: Download button
+                with open(result_zip_path, "rb") as f:
+                    st.download_button(
+                        label="⬇️ Download MRIQC Results ZIP",
+                        data=f,
+                        file_name=f"mriqc_results_{subj_id}.zip",
+                        mime="application/zip"
+                    )
 
-                            # Rezip
-                            updated_zip_path = temp_dir / "mriqc_results_with_IQMs"
-                            shutil.make_archive(
-                                str(updated_zip_path), 'zip', root_dir=result_dir)
+                # ---- UI: Preview contents (TSV + HTML)
+                st.subheader("📁 Results Summary")
+                files_listed = [p.relative_to(extract_dir).as_posix()
+                                for p in extract_dir.rglob("*") if p.is_file()]
+                if files_listed:
+                    st.write(f"Found **{len(files_listed)}** files.")
+                    st.code("\n".join(sorted(files_listed[:100])))
 
-                            # Download button
-                            with open(f"{updated_zip_path}.zip", "rb") as f:
-                                st.download_button(
-                                    label="📥 Download MRIQC Results (including IQMs CSV)",
-                                    data=f,
-                                    file_name="mriqc_results_with_IQMs.zip",
-                                    mime="application/zip"
-                                )
-
-                            # View IQMs
-                            st.subheader(
-                                "Extracted Image Quality Metrics (IQMs)")
-                            st.dataframe(iqms_df)
-
-                            # View HTMLs
-                            for report in html_reports:
-                                with open(report, "r") as rf:
-                                    html_data = rf.read()
-                                st.components.v1.html(
-                                    html_data, height=1000, scrolling=True)
-                        else:
-                            st.warning(
-                                "No HTML reports found in MRIQC results.")
-
-                        # Log
-                        log_files = list(result_dir.rglob("mriqc_log.txt"))
-                        if log_files:
-                            with open(log_files[0], "r") as lf:
-                                log_data = lf.read()
-                            st.subheader("MRIQC Log")
-                            st.text_area("Log Output", log_data, height=400)
-
-                        # 🔥 Clean up
-                        cleanup_url = f"{API_BASE}/delete-job/{job_id}"
-                        cleanup_response = requests.delete(cleanup_url)
-                        if cleanup_response.status_code == 200:
-                            st.info("✅ Backend job data cleaned up.")
-                        else:
-                            st.warning(
-                                "⚠️ Failed to clean up job data on server.")
-                        break
-
-                    elif result["status"] == "failed":
-                        st.error(
-                            f"❌ Job failed: {result.get('error', 'Unknown error')}")
-                        break
-
+                tsv_files = list(extract_dir.rglob("*.tsv"))
+                if tsv_files:
+                    st.subheader("📊 Quality Metrics (TSV)")
+                    for tsv in tsv_files:
+                        st.write(f"**{tsv.name}**")
+                        try:
+                            df = pd.read_csv(tsv, sep="\t")
+                            st.dataframe(df)
+                        except Exception as e:
+                            st.warning(f"Could not read {tsv.name}: {e}")
                 else:
-                    st.warning(
-                        "⚠️ MRIQC processing timed out after 20 minutes.")
+                    st.info("No TSV metrics found.")
+
+                html_files = list(extract_dir.rglob("*.html"))
+                if html_files:
+                    st.subheader("🧠 MRIQC HTML Reports")
+                    for html_path in html_files:
+                        try:
+                            with open(html_path, "r", encoding="utf-8") as fh:
+                                st.components.v1.html(
+                                    fh.read(), height=700, scrolling=True)
+                        except Exception as e:
+                            st.warning(
+                                f"Could not render {html_path.name}: {e}")
+                else:
+                    st.info("No HTML reports found.")
+            except requests.exceptions.Timeout:
+                st.error("❌ Request timed out — processing took too long.")
+            except Exception as e:
+                st.error(f"❌ Unexpected error: {e}")
 
 
 # ------------------------------
 # Footer and Branding
 # ------------------------------
-
 
 # Container with collective padding
 st.markdown("""
