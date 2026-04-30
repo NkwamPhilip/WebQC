@@ -445,7 +445,7 @@ def main():
         mem_gb = st.selectbox("Memory Allocation (GB)",
                               [16, 32, 48, 64], index=0)
 
-    API_BASE = "http://192.168.1.148:8040"
+    API_BASE = "https://mriqc.haske.online"
 
     dicom_zip = st.file_uploader("Upload DICOM ZIP", type=["zip"])
 
